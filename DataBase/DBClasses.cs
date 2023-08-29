@@ -49,7 +49,7 @@ namespace TelegramShop.DataBase
         public int OrderId { get; set; }
         public int ItemId { get; set; }
         public int Count { get; set; }
-        public int Price { get; set; }
+        public int ItemPriceId { get; set; }
     }
 
     public partial class Admin
@@ -66,6 +66,7 @@ namespace TelegramShop.DataBase
         public int RoleId { get; set; }
         public string RoleName { get; set; }
         public string? Description { get; set; }
+        public int Level { get; set; }
     }
 
     public partial class Permission

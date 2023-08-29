@@ -9,6 +9,14 @@
 *.user
 *.userosscache
 *.sln.docstates
+/Migrations
+/Resourses
+/AES
+/bin
+/obj
+.editorconfig
+TelegramShop.csproj.user
+TGBots.sln
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -372,14 +380,6 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
-/Migrations
-/Resourses
-/AES
-/bin
-/obj
-.editorconfig
-TelegramShop.csproj.user
-TGBots.sln
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
