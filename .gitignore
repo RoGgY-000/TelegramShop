@@ -16,8 +16,9 @@
 /obj
 .editorconfig
 TelegramShop.csproj.user
-TGBots.sln
+TgBots.sln
 config.txt
+/Azure
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
