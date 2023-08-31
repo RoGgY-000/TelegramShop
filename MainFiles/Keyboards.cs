@@ -10,8 +10,15 @@ namespace TelegramShop.Keyboards
         {
             new[]
             {
-                InlineKeyboardButton.WithCallbackData( text: "Товары", callbackData: "edit_catalog" ),
+                InlineKeyboardButton.WithCallbackData( text: "Товары", callbackData: "edit_catalog" )
+            },
+            new[]
+            {
                 InlineKeyboardButton.WithCallbackData( text: "Заказы", callbackData: "orders" )
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData( text: "Роли", callbackData: "roles" )
             }
         });
         public static async Task<InlineKeyboardMarkup> Menu (long userId)

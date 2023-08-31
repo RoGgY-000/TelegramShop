@@ -1,8 +1,9 @@
-﻿using System.ComponentModel.DataAnnotations;
-using Microsoft.EntityFrameworkCore;
-
+﻿
 namespace TelegramShop.DataBase
 {
+    using System.ComponentModel.DataAnnotations;
+    using Microsoft.EntityFrameworkCore;
+
     public partial class Item
     {
         [Key]
@@ -10,7 +11,6 @@ namespace TelegramShop.DataBase
         public string ItemName { get; set; }
         public string? Description { get; set; }
         public int CategoryId { get; set; }
-        public int ItemPriceId { get; set; }
         public byte[]? Image { get; set; }
     }
 
@@ -18,9 +18,35 @@ namespace TelegramShop.DataBase
     {
         [Key]
         public int PriceId { get; set; }
-        public int ItemPriceId { get; set; }
+        public int ItemId { get; set; }
         public string Region { get; set; }
         public int PriceValue { get; set; }
+    }
+
+    public partial class Property
+    {
+        [Key]
+        public int PropertyId { get; set; }
+        public string Name { get; set; }
+        public string? Description { get; set; }
+    }
+
+    public partial class IntProperty
+    {
+        [Key]
+        public int Id { get; set; }
+        public int ItemId { get; set; }
+        public int PropertyId { get; set; }
+        public int PropertyValue { get; set; }
+    }
+
+    public partial class StringProperty
+    {
+        [Key]
+        public int Id { get; set; }
+        public int ItemId { get; set; }
+        public int PropertyId { get; set; }
+        public string PropertyValue { get; set; }
     }
 
     public partial class Category
@@ -41,7 +67,6 @@ namespace TelegramShop.DataBase
         public int Summ { get; set; }
         public byte OrderStatus { get; set; }
     }
-
 
     public partial class OrderItem
     {
@@ -66,7 +91,7 @@ namespace TelegramShop.DataBase
         public int RoleId { get; set; }
         public string RoleName { get; set; }
         public string? Description { get; set; }
-        public int Level { get; set; }
+        public byte Level { get; set; }
     }
 
     public partial class Permission
@@ -76,6 +101,7 @@ namespace TelegramShop.DataBase
         public string PermissionName { get; set; }
         public string? Description { get; set; }
     }
+
     public partial class RolePermission
     {
         [Key]

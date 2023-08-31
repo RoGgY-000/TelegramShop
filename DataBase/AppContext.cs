@@ -6,11 +6,12 @@ namespace TelegramShop.DataBase
     using TelegramShop.AES;
     public class ShopContext : DbContext
     {
-        public DbSet<Item> Item { get; set; }
-        public DbSet<Category> Category { get; set; }
-        public DbSet<Order> Order { get; set; }
-        public DbSet<OrderItem> OrderItem { get; set; }
-        public DbSet<Admin> Admin { get; set; }
+        public DbSet<Item> Items { get; set; }
+        public DbSet<Price> Prices { get; set; }
+        public DbSet<Category> Categories { get; set; }
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<OrderItem> OrderItems { get; set; }
+        public DbSet<Admin> Admins { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -20,6 +21,7 @@ namespace TelegramShop.DataBase
                 "Database=TelegramShop;" +
                 "Username=postgres;" +
                 $"Password={AESEncoding.GetDBPassword ()}");
+            optionsBuilder.LogTo (Console.WriteLine, Microsoft.Extensions.Logging.LogLevel.Debug);
         }
     }
 }

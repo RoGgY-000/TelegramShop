@@ -531,17 +531,13 @@ namespace TelegramShop
             }
             catch (Exception e) 
             { 
-                if ( !(e.GetType().ToString() == "Telegram.Bot.Exceptions.ApiRequestException") )
-                {
-                    Console.WriteLine (e);
-                    await botClient.SendTextMessageAsync (
-                                chatId: (update.Type == UpdateType.Message) ? update.Message.Chat.Id : update.CallbackQuery.From.Id,
-                                text: "Что-то пошло не так, попробуйте ещё раз (",
-                                replyMarkup: null,
-                                cancellationToken: cancellationToken,
-                                parseMode: ParseMode.Html); // error occurred
-                }
-                
+                Console.WriteLine (e);
+                await botClient.SendTextMessageAsync (
+                            chatId: (update.Type == UpdateType.Message) ? update.Message.Chat.Id : update.CallbackQuery.From.Id,
+                            text: "Что-то пошло не так, попробуйте ещё раз (",
+                            replyMarkup: null,
+                            cancellationToken: cancellationToken,
+                            parseMode: ParseMode.Html);
                 return; 
             }
         }
