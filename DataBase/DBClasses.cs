@@ -2,7 +2,6 @@
 namespace TelegramShop.DataBase
 {
     using System.ComponentModel.DataAnnotations;
-    using Microsoft.EntityFrameworkCore;
 
     public partial class Item
     {
@@ -19,8 +18,15 @@ namespace TelegramShop.DataBase
         [Key]
         public int PriceId { get; set; }
         public int ItemId { get; set; }
-        public string Region { get; set; }
+        public int RegionId { get; set; }
         public int PriceValue { get; set; }
+    }
+
+    public partial class Region
+    {
+        [Key]
+        public int RegionId { get; set; }
+        public string RegionName { get; set; }
     }
 
     public partial class Property

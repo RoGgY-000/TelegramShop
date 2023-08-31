@@ -17,8 +17,9 @@ namespace TelegramShop
     internal class Program
     {   // Bot
         private static readonly ITelegramBotClient bot = new TelegramBotClient (AESEncoding.GetToken());
-        private static Dictionary<long, Item> ItemEditCache = new();
-        private static Dictionary<long, Category> CategoryEditCache = new();
+        private static Dictionary<long, Item> ItemCache = new();
+        private static Dictionary<long, Category> CategoryCache = new();
+        private static Dictionary<long, Price> PriceCache = new ();
         private const string badChars = "'\"*&^%$#@!{}[]`~;\\|=+<>?№";
 
         private static async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
@@ -71,33 +72,31 @@ namespace TelegramShop
                                             replyText = "Unknown text!";
                                             break;
                                         case AdminStatus.CreateCategory:
-                                            if ( CategoryEditCache.ContainsKey (message.From.Id)
-                                                && CategoryEditCache.TryGetValue (message.From.Id, out Category? categoryToCreate)
+                                            if ( CategoryCache.ContainsKey (message.From.Id)
+                                                && CategoryCache.TryGetValue (message.From.Id, out Category? categoryToCreate)
                                                 && categoryToCreate is not null )
                                                 await DBMethods.CreateCategory (text, categoryToCreate.ParentId);
                                             replyText = await DBMethods.GetCategoryByName (text) is not null
                                                 ? $"Категория \"{text}\" успешно создана!"
-                                                : "Не удалось создать категорию(";
+                                                : "Не удалось создать категорию!";
                                             await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.Clear);
                                             break;
                                         case AdminStatus.EditCategory:
-                                            if ( CategoryEditCache.ContainsKey (message.From.Id)
-                                                && CategoryEditCache.TryGetValue (message.From.Id, out Category? Category)
+                                            if ( CategoryCache.ContainsKey (message.From.Id)
+                                                && CategoryCache.TryGetValue (message.From.Id, out Category? Category)
                                                 && Category is not null
                                                 && DBMethods.GetCategory (Category.CategoryId) is not null )
                                             {
                                                 await DBMethods.EditCategoryName (Category.CategoryId, text);
-                                                if ( (await DBMethods.GetCategory (Category.CategoryId)).CategoryName == text )
-                                                    replyText = "Название категории успешно изменено.";
-                                                else
-                                                    replyText = "failed";
+                                                replyText = (await DBMethods.GetCategory (Category.CategoryId)).CategoryName == text
+                                                    ? "Название категории успешно изменено." : "failed";
                                                 RemoveFromDictionaries (message.From.Id);
                                                 await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.Clear);
                                             }
                                             break;
                                         case AdminStatus.DeleteCategory:
-                                            if ( CategoryEditCache.ContainsKey (message.From.Id)
-                                                && CategoryEditCache.TryGetValue (message.From.Id, out Category? category) )
+                                            if ( CategoryCache.ContainsKey (message.From.Id)
+                                                && CategoryCache.TryGetValue (message.From.Id, out Category? category) )
                                             {
                                                 Category CategoryToDelete = await DBMethods.GetCategory (category.CategoryId);
                                                 if ( CategoryToDelete is not null && text == category.CategoryName )
@@ -114,26 +113,34 @@ namespace TelegramShop
                                                 else replyText = "Название не совпадает!";
                                             }
                                             break;
-                                        case AdminStatus.CreateItemName:
-                                            if ( ItemEditCache.ContainsKey (message.From.Id) )
+                                        case AdminStatus.DeleteItem:
+                                            if ( ItemCache.ContainsKey (message.From.Id)
+                                                && ItemCache.TryGetValue (message.From.Id, out Item? itemToDelete)
+                                                && itemToDelete is not null
+                                                && await DBMethods.GetItem (itemToDelete.ItemId) is not null
+                                                && text == itemToDelete.ItemName)
                                             {
-                                                ItemEditCache[message.From.Id].ItemName = message.Text ?? string.Empty;
+                                                await DBMethods.DeleteItem (itemToDelete.ItemId);
+                                                replyText = !await DBMethods.ItemExists (itemToDelete.ItemId)
+                                                    ? $"Товар \"{itemToDelete.ItemName}\" успешно удалён"
+                                                    : $"Не удалось удалить товар \"{itemToDelete.ItemName}\"!";
+                                                await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.Clear);
+                                                RemoveFromDictionaries (message.From.Id);
+                                            }
+                                            else replyText = "Название не совпадает!";
+                                            break;
+                                        case AdminStatus.CreateItemName:
+                                            if ( ItemCache.ContainsKey (message.From.Id) )
+                                            {
+                                                ItemCache[message.From.Id].ItemName = message.Text ?? string.Empty;
                                                 await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.CreateItemDesc);
                                                 replyText = "Введите описание товара (введите '_', чтобы оставить пустым):";
                                             }
                                             break;
                                         case AdminStatus.CreateItemDesc:
-                                            if ( ItemEditCache.ContainsKey (message.From.Id) )
+                                            if ( ItemCache.ContainsKey (message.From.Id) )
                                             {
-                                                ItemEditCache[message.From.Id].Description = (message.Text == "_") ? null : message.Text;
-                                                await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.CreateItemPrice);
-                                                replyText = "Введите цену товара:";
-                                            }
-                                            break;
-                                        case AdminStatus.CreateItemPrice:
-                                            if ( ItemEditCache.ContainsKey (message.From.Id) )
-                                            {
-                                                ItemEditCache[message.From.Id].ItemPriceId = int.TryParse (text, out int price) ? price : 0;
+                                                ItemCache[message.From.Id].Description = (message.Text == "_") ? null : message.Text;
                                                 await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.CreateItemImage);
                                                 replyText = "Отправьте карточку товара:";
                                             }
@@ -143,19 +150,15 @@ namespace TelegramShop
                                             {
                                                 var stream = new MemoryStream ();
                                                 //    Console.WriteLine (message.Photo.Last ().FileId);
-                                                if ( ItemEditCache.ContainsKey (message.From.Id)
-                                                    && ItemEditCache.TryGetValue (message.From.Id, out Item? Item)
-                                                    && Item is not null )
+                                                if ( ItemCache.ContainsKey (message.From.Id)
+                                                    && ItemCache.TryGetValue (message.From.Id, out Item? itemToCreate)
+                                                    && itemToCreate is not null )
                                                 {
-                                                    await DBMethods.CreateItem (
-                                                        Item.CategoryId,
-                                                        Item.ItemName,
-                                                        Item.Description,
-                                                        Item.ItemPriceId);
-                                                    if ( DBMethods.GetItem (Item.ItemId) is not null )
+                                                    await DBMethods.CreateItem (itemToCreate);
+                                                    if ( DBMethods.GetItem (itemToCreate.ItemId) is not null )
                                                     {
-                                                        replyText = $"Товар {Item.ItemName} успешно создан";
-                                                        ReplyMarkup = await Kb.Back ($"edit_category {Item.CategoryId:d10}");
+                                                        replyText = $"Товар {itemToCreate.ItemName} успешно создан";
+                                                        ReplyMarkup = await Kb.Back ($"edit_item {itemToCreate.ItemId:d10}");
                                                     }
                                                 }
                                             }
@@ -163,8 +166,8 @@ namespace TelegramShop
                                             RemoveFromDictionaries (message.From.Id);
                                             break;
                                         case AdminStatus.EditItemName:
-                                            if ( ItemEditCache.ContainsKey (message.From.Id)
-                                                && ItemEditCache.TryGetValue (message.From.Id, out Item? item)
+                                            if ( ItemCache.ContainsKey (message.From.Id)
+                                                && ItemCache.TryGetValue (message.From.Id, out Item? item)
                                                 && item is not null
                                                 && await DBMethods.GetItem (item.ItemId) is not null )
                                             { 
@@ -176,22 +179,19 @@ namespace TelegramShop
                                             await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.Clear);
                                             break;
                                         case AdminStatus.EditItemPrice:
-                                            if ( ItemEditCache.ContainsKey (message.From.Id)
-                                                && ItemEditCache.TryGetValue (message.From.Id, out Item? itemToEdit)
+                                            if ( ItemCache.ContainsKey (message.From.Id)
+                                                && ItemCache.TryGetValue (message.From.Id, out Item? itemToEdit)
                                                 && itemToEdit is not null
                                                 && await DBMethods.GetItem (itemToEdit.ItemId) is not null
                                                 && int.TryParse (text, out int newPrice))
                                             {
-                                                await DBMethods.EditItemPrice (itemToEdit.ItemId, newPrice);
-                                                if ( (await DBMethods.GetItem (itemToEdit.ItemId)).ItemPriceId == newPrice )
-                                                    replyText = "Цена товара успешно изменена.";
                                             }
                                             RemoveFromDictionaries (message.From.Id);
                                             await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.Clear);
                                             break;
                                         case AdminStatus.EditItemDesc:
-                                            if ( ItemEditCache.ContainsKey (message.From.Id)
-                                                && ItemEditCache.TryGetValue (message.From.Id, out Item? ItemToEdit)
+                                            if ( ItemCache.ContainsKey (message.From.Id)
+                                                && ItemCache.TryGetValue (message.From.Id, out Item? ItemToEdit)
                                                 && ItemToEdit is not null
                                                 && await DBMethods.GetItem (ItemToEdit.ItemId) is not null )
                                             {
@@ -202,25 +202,7 @@ namespace TelegramShop
                                             RemoveFromDictionaries (message.From.Id);
                                             await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.Clear);
                                             break;
-                                        case AdminStatus.DeleteItem:
-                                            if ( ItemEditCache.ContainsKey (message.From.Id)
-                                                && ItemEditCache.TryGetValue (message.From.Id, out Item? itemToDelete)
-                                                && itemToDelete is not null)
-                                            {
-                                                itemToDelete = await DBMethods.GetItem (itemToDelete.ItemId);
-                                                if ( itemToDelete is not null && text == itemToDelete.ItemName )
-                                                {
-                                                    await DBMethods.DeleteItem (itemToDelete.ItemId);
-                                                    if ( !await DBMethods.ItemExists (itemToDelete.ItemId) )
-                                                        replyText = $"Товар \"{itemToDelete.ItemName}\" успешно удалён";
-                                                    else
-                                                        replyText = $"Не удалось удалить товар \"{itemToDelete.ItemName}\"!";
-                                                    await DBMethods.SetAdminStatus (message.From.Id, AdminStatus.Clear);
-                                                    RemoveFromDictionaries (message.From.Id);
-                                                }
-                                                else replyText = "Название не совпадает!";
-                                            }
-                                            break;
+                                        
                                         default: replyText = "Unknown text!"; break;
                                     }
                                 }
@@ -273,11 +255,6 @@ namespace TelegramShop
                             var carts = await DBMethods.GetUserCart(query.From.Id);
                             if (carts != null && carts.Length > 1)
                             {
-                                foreach (OrderItem cart in carts)
-                                {
-                                    Item item = await DBMethods.GetItem(cart.ItemId);
-                                    ReplyText += $"\n{item.ItemName} - {cart.Count} - {item.ItemPriceId * cart.Count}$";
-                                }
                             }
                             else if (carts == null || carts.Length == 0)
                             {
@@ -319,7 +296,7 @@ namespace TelegramShop
                                 {
                                     Byte.TryParse(query.Data.Substring(query.Data.Length - 3), out byte page);
                                     Item item = await DBMethods.GetItem(itemId);
-                                    ReplyText = $"Артикул: {item.ItemId}\n\n{item.ItemName}\n\n{item.ItemPriceId}\n\n{item.Description}";
+                                    ReplyText = $"Артикул: {item.ItemId}\n\n{item.ItemName}\n\n\n\n{item.Description}";
                                     ReplyMarkup = await Kb.Item(itemId, page);
                                 }
                             }
@@ -348,7 +325,7 @@ namespace TelegramShop
                                         ReplyMarkup = await Kb.CreateCategory ( parentId );
                                         await DBMethods.SetAdminStatus (query.From.Id, AdminStatus.CreateCategory);
                                         var category = new Category { ParentId = parentId };
-                                        CategoryEditCache.Add (query.From.Id, category);
+                                        CategoryCache.Add (query.From.Id, category);
                                     }
                                     else
                                         ReplyText = "fail(";
@@ -380,7 +357,7 @@ namespace TelegramShop
                                     RemoveFromDictionaries(query.From.Id);
                                     ReplyText = "Введите новое название категории:";
                                     ReplyMarkup = await Kb.Back($"edit_category {categoryId:d10}");
-                                    CategoryEditCache.Add(query.From.Id, await DBMethods.GetCategory(categoryId));
+                                    CategoryCache.Add(query.From.Id, await DBMethods.GetCategory(categoryId));
                                     await DBMethods.SetAdminStatus(query.From.Id, AdminStatus.EditCategory);
                                 }
                             }
@@ -410,7 +387,7 @@ namespace TelegramShop
                                         ReplyMarkup = await Kb.Back($"edit_items {categoryId:d10}");
                                         await DBMethods.SetAdminStatus(query.From.Id, AdminStatus.CreateItemName);
                                         var item = new Item { CategoryId = categoryId };
-                                        ItemEditCache.Add(query.From.Id, item);
+                                        ItemCache.Add(query.From.Id, item);
                                     }
                                     else ReplyText = "fail(";
                                 }
@@ -422,7 +399,7 @@ namespace TelegramShop
                                 {
                                     Item item = await DBMethods.GetItem(itemId);
                                     ReplyText = $"Название: {item.ItemName}\n" +
-                                                $"Цена: {item.ItemPriceId:c}\n" +
+                                                $"Цена:\n" +
                                                 $"Описание: {item.Description?? "Пусто"}\n" +
                                                 $"Категория: {await DBMethods.GetStringPath (item)}\n" +
                                                 $"Артикул: {item.ItemId:d10}";
@@ -437,7 +414,7 @@ namespace TelegramShop
                                     RemoveFromDictionaries (query.From.Id);
                                     Item item = await DBMethods.GetItem (itemId);
                                     await DBMethods.SetAdminStatus (query.From.Id, AdminStatus.EditItemName);
-                                    ItemEditCache.Add (query.From.Id, item);
+                                    ItemCache.Add (query.From.Id, item);
                                     ReplyText = "Введите новое название товара:";
                                     ReplyMarkup = await Kb.Back ( $"edit_item {item.ItemId:d10}");
                                 }
@@ -448,11 +425,11 @@ namespace TelegramShop
                                 if ( int.TryParse (query.Data[15..26], out int itemId) )
                                 {
                                     RemoveFromDictionaries (query.From.Id);
-                                    Item item = await DBMethods.GetItem (itemId);
+                                    Price price = new Price { ItemId = itemId };
                                     await DBMethods.SetAdminStatus (query.From.Id, AdminStatus.EditItemPrice);
-                                    ItemEditCache.Add (query.From.Id, item);
+                                    PriceCache.Add (query.From.Id, price);
                                     ReplyText = "Введите новую цену товара:";
-                                    ReplyMarkup = await Kb.Back ($"edit_item {item.ItemId:d10}");
+                                    ReplyMarkup = await Kb.Back ($"edit_item {itemId:d10}");
                                 }
                             }
 
@@ -463,7 +440,7 @@ namespace TelegramShop
                                     RemoveFromDictionaries (query.From.Id);
                                     Item item = await DBMethods.GetItem (itemId);
                                     await DBMethods.SetAdminStatus (query.From.Id, AdminStatus.EditItemDesc);
-                                    ItemEditCache.Add (query.From.Id, item);
+                                    ItemCache.Add (query.From.Id, item);
                                     ReplyText = "Введите новое описание товара:";
                                     ReplyMarkup = await Kb.Back ($"edit_item {item.ItemId:d10}");
                                 }
@@ -477,7 +454,7 @@ namespace TelegramShop
                                     Category category = await DBMethods.GetCategory (categoryId);
                                     if ( category != null )
                                     {
-                                        CategoryEditCache.Add (query.From.Id, await DBMethods.GetCategory (categoryId));
+                                        CategoryCache.Add (query.From.Id, await DBMethods.GetCategory (categoryId));
                                         await DBMethods.SetAdminStatus (query.From.Id, AdminStatus.DeleteCategory);
                                         ReplyText = $"Введите название категории (сохраняя регистр) для удаления этой категории:";
                                         ReplyMarkup = await Kb.Back ($"edit_category {category.ParentId:d10}");
@@ -493,7 +470,7 @@ namespace TelegramShop
                                     Item item = await DBMethods.GetItem(itemId);
                                     if ( item is not null )
                                     {
-                                        ItemEditCache.Add (query.From.Id, item);
+                                        ItemCache.Add (query.From.Id, item);
                                         await DBMethods.SetAdminStatus (query.From.Id, AdminStatus.DeleteItem);
                                         ReplyText = $"Введите название товара (сохраняя регистр) для удаления этого товара:";
                                         ReplyMarkup = await Kb.Back ($"edit_category {item.CategoryId:d10}");
@@ -563,10 +540,12 @@ namespace TelegramShop
 
         private static void RemoveFromDictionaries (long id)
         {
-            if ( CategoryEditCache.ContainsKey(id) )
-                CategoryEditCache.Remove(id);
-            if ( ItemEditCache.ContainsKey(id) )
-                ItemEditCache.Remove(id);
+            if ( CategoryCache.ContainsKey (id) )
+                CategoryCache.Remove (id);
+            if ( ItemCache.ContainsKey (id) )
+                ItemCache.Remove (id);
+            if ( PriceCache.ContainsKey (id) )
+                PriceCache.Remove (id);
         }
 
         private static void Main()

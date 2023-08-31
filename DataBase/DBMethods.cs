@@ -5,7 +5,7 @@ namespace TelegramShop.DataBase
     using System.Text;
     internal class DBMethods
     {
-        public static async Task CreateItem (int categoryId, string name, string? desc, int price)
+        public static async Task CreateItem (Item item)
         {
             var db = new ShopContext();
             var random = new Random();
@@ -16,8 +16,8 @@ namespace TelegramShop.DataBase
                 randomId = random.Next (int.MaxValue);
                 CurrentItems = await db.Items.Where (x => x.ItemId == randomId).ToArrayAsync();
             } while ( CurrentItems.Length > 0 );
-            var newItem = new Item { ItemId = randomId, CategoryId = categoryId, ItemName = name, Description = desc, ItemPriceId = price };
-            await db.Items.AddAsync (newItem);
+            item.ItemId = randomId;
+            await db.Items.AddAsync (item);
             await db.SaveChangesAsync();
         }
         public static async Task CreateCategory (string categoryName, int parentId)
@@ -138,8 +138,6 @@ namespace TelegramShop.DataBase
             Item? item = await db.Items.FindAsync (itemId);
             if ( item is not null )
             {
-                item.ItemPriceId = price;
-                await db.SaveChangesAsync();
             }
         }
         public static async Task EditItemImage (int itemId, byte[] image)

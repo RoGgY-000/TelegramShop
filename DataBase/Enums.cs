@@ -12,16 +12,15 @@
         CreateCategory = 1,
         EditCategory = 2,
         DeleteCategory = 3,
+        DeleteItem = 9,
         CreateItemName = 11,
         CreateItemDesc = 12,
-        CreateItemPrice = 13,
-        CreateItemImage = 14,
-        EditItemName = 15,
-        EditItemDesc = 16,
-        EditItemPrice = 17,
-        EditItemCategory = 18,
-        EditItemImage = 19,
-        DeleteItem = 20
+        CreateItemImage = 13,
+        EditItemName = 21,
+        EditItemDesc = 22,
+        EditItemPrice = 23,
+        EditItemCategory = 24,
+        EditItemImage = 25,
     }
 
     public enum OrderStatus : byte
