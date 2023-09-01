@@ -8,6 +8,8 @@ namespace TelegramShop.DataBase
     {
         public DbSet<Item> Items { get; set; }
         public DbSet<Price> Prices { get; set; }
+        public DbSet<Store> Stores { get; set; }
+        public DbSet<StoreItemCount> StoreItemCounts { get; set; }
         public DbSet<Property> Properties { get; set; }
         public DbSet<IntProperty> IntProperties { get; set; }
         public DbSet<StringProperty> StringProperties { get; set; }

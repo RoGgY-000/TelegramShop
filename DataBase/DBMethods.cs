@@ -5,36 +5,6 @@ namespace TelegramShop.DataBase
     using System.Text;
     internal class DBMethods
     {
-        public static async Task CreateItem (Item item)
-        {
-            var db = new ShopContext();
-            var random = new Random();
-            int randomId;
-            Item[] CurrentItems;
-            do 
-            {
-                randomId = random.Next (int.MaxValue);
-                CurrentItems = await db.Items.Where (x => x.ItemId == randomId).ToArrayAsync();
-            } while ( CurrentItems.Length > 0 );
-            item.ItemId = randomId;
-            await db.Items.AddAsync (item);
-            await db.SaveChangesAsync();
-        }
-        public static async Task CreateCategory (string categoryName, int parentId)
-        {
-            var db = new ShopContext();
-            var random = new Random();
-            int randomId;
-            Category[] CurrentCategories;
-            do
-            {
-                randomId = random.Next (int.MaxValue);
-                CurrentCategories = await db.Categories.Where (x => x.CategoryId == randomId).ToArrayAsync();
-            } while ( CurrentCategories.Length > 0 );
-            var newCategory = new Category { CategoryId = randomId, CategoryName = categoryName, ParentId = parentId };
-            await db.Categories.AddAsync (newCategory);
-            await db.SaveChangesAsync ();
-        }
         public static async Task CreateOrder (long userId)
         {
             var db = new ShopContext();
@@ -43,7 +13,7 @@ namespace TelegramShop.DataBase
             Order[] CurrentOrders;
             do
             {
-                randomId = random.Next (int.MaxValue);
+                randomId = random.Next (1, int.MaxValue);
                 CurrentOrders = await db.Orders.Where (x => x.OrderId == randomId).ToArrayAsync();
             } while ( CurrentOrders.Length > 0 );
             var order = new Order { OrderId = randomId, UserId = userId, OrderStatus = (byte) OrderStatus.Cart};
@@ -56,43 +26,6 @@ namespace TelegramShop.DataBase
             var newAdmin = new Admin { UserId = userId, Status = 0 };
             await db.Admins.AddAsync (newAdmin);
             await db.SaveChangesAsync();
-        }
-        public static async Task<Item> GetItem (int itemId)
-        {
-            var db = new ShopContext();
-            return await db.Items.Where ( x => x.ItemId == itemId).FirstAsync();
-        }
-        public static async Task<int> GetItemCountInCategory (int categoryId)
-        {
-            var db = new ShopContext();
-            Category? category = await db.Categories.FindAsync (categoryId);
-            return category is not null ? await db.Items.Where (x => x.CategoryId == categoryId).CountAsync() : 0;
-        }
-        public static async Task<Category> GetCategory (int categoryId)
-        {
-            var db = new ShopContext();
-            return await db.Categories.Where (x => x.CategoryId == categoryId).FirstAsync();
-        }
-        public static async Task<Category> GetCategoryByName (string categoryName)
-        {
-            var db = new ShopContext();
-            return await db.Categories.Where (x => x.CategoryName == categoryName).FirstAsync();
-
-        }
-        public static async Task<Category[]> GetRootCategories()
-        {
-            var db = new ShopContext();
-            return await db.Categories.Where (x => x.ParentId == 0).ToArrayAsync();
-        }
-        public static async Task<Category[]> GetChildCategories (int parentId)
-        {
-            var db = new ShopContext();
-            return await db.Categories.Where (x => x.ParentId == parentId).ToArrayAsync();
-        }
-        public static async Task<Item[]> GetItemsByCategory (int categoryId)
-        {
-            var db = new ShopContext();
-            return await db.Items.Where (x => x.CategoryId == categoryId).ToArrayAsync();
         }
         public static async Task<OrderItem[]> GetUserCart (long userId)
         {
@@ -111,105 +44,6 @@ namespace TelegramShop.DataBase
             var db = new ShopContext();
             Admin? user = await db.Admins.FindAsync (userId);
             return user is not null ? (AdminStatus) user.Status : 0;
-        }
-        public static async Task EditItemName (int itemId, string name)
-        {
-            var db = new ShopContext();
-            Item? item = await db.Items.FindAsync (itemId);
-            if ( item is not null )
-            {
-                item.ItemName = name;
-                await db.SaveChangesAsync();
-            }
-        }
-        public static async Task EditItemDesc (int itemId, string desc)
-        {
-            var db = new ShopContext();
-            Item? item = await db.Items.FindAsync (itemId);
-            if ( item is not null )
-            {
-                item.Description = desc;
-                await db.SaveChangesAsync();
-            }
-        }
-        public static async Task EditItemPrice (int itemId, int price)
-        {
-            var db = new ShopContext();
-            Item? item = await db.Items.FindAsync (itemId);
-            if ( item is not null )
-            {
-            }
-        }
-        public static async Task EditItemImage (int itemId, byte[] image)
-        {
-            var db = new ShopContext();
-            Item? item = await db.Items.FindAsync (itemId);
-            if ( item is not null )
-            {
-                item.Image = image;
-                await db.SaveChangesAsync();
-            }
-        }
-        public static async Task EditCategoryName (int categoryId, string newName)
-        {
-            var db = new ShopContext();
-            Category? category = await db.Categories.FindAsync (categoryId);
-            if ( category is not null
-                && category.CategoryName != newName)
-            {
-                category.CategoryName = newName;
-                await db.SaveChangesAsync();
-            }
-        }
-        public static async Task DeleteItem (int itemId)
-        {
-            var db = new ShopContext();
-            Item? item = await db.Items.FindAsync (itemId);
-            if ( item is not null )
-            {
-                db.Items.Remove (item);
-                await db.SaveChangesAsync();
-            }
-        }
-        public static async Task DeleteCategory (int categoryId)
-        {
-            try
-            {
-                var db = new ShopContext();
-                Category? category = await db.Categories.FindAsync (categoryId);
-                if ( category is not null )
-                {
-                    bool hasCategories = await HasCategories (category.CategoryId);
-                    bool hasItems = await HasItems (category.CategoryId);
-                    if ( !hasCategories && !hasItems )
-                    {
-                        db.Categories.Remove (category);
-                        await db.SaveChangesAsync();
-                    }
-                    else if ( hasItems && !hasCategories )
-                    {
-                        Item[] CategoryItems = await db.Items.Where (x => x.CategoryId == categoryId).ToArrayAsync();
-                        db.Items.RemoveRange (CategoryItems);
-                        await db.SaveChangesAsync();
-                        db.Categories.Remove (category);
-                        await db.SaveChangesAsync ();
-                    }
-                    else if ( hasCategories && !hasItems )
-                    {
-                        Category[] ChildCategories = await db.Categories.Where (x => x.ParentId == categoryId).ToArrayAsync();
-                        foreach ( Category c in ChildCategories )
-                        {
-                            await DeleteCategory (c.CategoryId);
-                        }
-                        db.Categories.Remove (category);
-                        await db.SaveChangesAsync();
-                    }
-                }
-            }
-            catch ( Exception e )
-            {
-                Console.WriteLine(e);
-            }
         }
         public static async Task AddToCart (long userId, int itemId, byte count)
         {
@@ -234,26 +68,6 @@ namespace TelegramShop.DataBase
                 return await IsAdmin (userId);
             }
             return false;
-        }
-        public static async Task<bool> ItemExists (int itemId)
-        {
-            var db = new ShopContext();
-            return await db.Items.FindAsync (itemId) is not null;
-        }
-        public static async Task<bool> CategoryExists (int categoryId)
-        {
-            var db = new ShopContext();
-            return await db.Categories.FindAsync (categoryId) is not null;
-        }
-        public static async Task<bool> HasCategories (int categoryId)
-        {
-            var db = new ShopContext();
-            return (await db.Categories.Where ( x => x.ParentId == categoryId).ToArrayAsync()).Length > 0;
-        }
-        public static async Task<bool> HasItems (int categoryId)
-        {
-            var db = new ShopContext();
-            return (await db.Items.Where (x => x.CategoryId == categoryId).ToArrayAsync ()).Length > 0;
         }
         public static async Task<string> GetStringPath (object obj)
         {
@@ -283,6 +97,239 @@ namespace TelegramShop.DataBase
             {
                 admin.Status = (byte) status;
                 await db.SaveChangesAsync();
+            }
+        }
+    }
+    internal class DBItems
+    {
+        public static async Task CreateItem (Item item)
+        {
+            var db = new ShopContext ();
+            var random = new Random ();
+            int randomId;
+            Item[] CurrentItems;
+            do
+            {
+                randomId = random.Next (1, int.MaxValue);
+                CurrentItems = await db.Items.Where (x => x.ItemId == randomId).ToArrayAsync ();
+            } while ( CurrentItems.Length > 0 );
+            item.ItemId = randomId;
+            await db.Items.AddAsync (item);
+            await db.SaveChangesAsync ();
+        }
+        public static async Task<Item> GetItem (int itemId)
+        {
+            var db = new ShopContext ();
+            return await db.Items.Where (x => x.ItemId == itemId).FirstAsync ();
+        }
+        public static async Task<int> GetItemCountInCategory (int categoryId)
+        {
+            var db = new ShopContext ();
+            Category? category = await db.Categories.FindAsync (categoryId);
+            return category is not null ? await db.Items.Where (x => x.CategoryId == categoryId).CountAsync () : 0;
+        }
+        public static async Task<Item[]> GetItemsByCategory (int categoryId)
+        {
+            var db = new ShopContext ();
+            return await db.Items.Where (x => x.CategoryId == categoryId).ToArrayAsync ();
+        }
+        public static async Task EditItemName (int itemId, string name)
+        {
+            var db = new ShopContext ();
+            Item? item = await db.Items.FindAsync (itemId);
+            if ( item is not null )
+            {
+                item.ItemName = name;
+                await db.SaveChangesAsync ();
+            }
+        }
+        public static async Task EditItemDesc (int itemId, string desc)
+        {
+            var db = new ShopContext ();
+            Item? item = await db.Items.FindAsync (itemId);
+            if ( item is not null )
+            {
+                item.Description = desc;
+                await db.SaveChangesAsync ();
+            }
+        }
+        public static async Task EditItemImage (int itemId, byte[] image)
+        {
+            var db = new ShopContext ();
+            Item? item = await db.Items.FindAsync (itemId);
+            if ( item is not null )
+            {
+                item.Image = image;
+                await db.SaveChangesAsync ();
+            }
+        }
+        public static async Task DeleteItem (int itemId)
+        {
+            var db = new ShopContext ();
+            Item? item = await db.Items.FindAsync (itemId);
+            if ( item is not null )
+            {
+                db.Items.Remove (item);
+                await db.SaveChangesAsync ();
+            }
+        }
+        public static async Task<bool> ItemExists (int itemId)
+        {
+            var db = new ShopContext ();
+            return await db.Items.FindAsync (itemId) is not null;
+        }
+    }
+
+    internal class DBPrices
+    {
+        public static async Task CreatePrice (Price price)
+        {
+            var db = new ShopContext ();
+            await db.Prices.AddAsync (price);
+            await db.SaveChangesAsync ();
+        }
+        public static async Task<Price[]> GetItemPrices (int itemId)
+        {
+            var db = new ShopContext ();
+            return await db.Prices.Where (x => x.ItemId == itemId).ToArrayAsync ();
+        }
+    }
+
+    internal class DBStores
+    {
+        public static async Task CreateStore (Store store)
+        {
+            if ( !string.IsNullOrEmpty (store.StoreName) )
+            {
+                var db = new ShopContext ();
+                var random = new Random ();
+                int randomId;
+                Store[] CurrentStores;
+                do
+                {
+                    randomId = random.Next (1, int.MaxValue);
+                    CurrentStores = await db.Stores.Where (x => x.StoreId == randomId).ToArrayAsync ();
+                } while ( CurrentStores.Length > 0 );
+                store.StoreId = randomId;
+                await db.Stores.AddAsync (store);
+                await db.SaveChangesAsync ();
+            }
+            
+        }
+        public static async Task<Store[]> GetStores ()
+        {
+            var db = new ShopContext ();
+            return await db.Stores.OrderBy (x => x.StoreName).ToArrayAsync ();
+        }
+        public static async Task<Store> GetStore (int storeId)
+        {
+            var db = new ShopContext ();
+            return await db.Stores.Where (x => x.StoreId == storeId).FirstAsync ();
+        }
+    }
+
+    internal class DBCategories
+    {
+        public static async Task CreateCategory (string categoryName, int parentId)
+        {
+            var db = new ShopContext ();
+            var random = new Random ();
+            int randomId;
+            Category[] CurrentCategories;
+            do
+            {
+                randomId = random.Next (1, int.MaxValue);
+                CurrentCategories = await db.Categories.Where (x => x.CategoryId == randomId).ToArrayAsync ();
+            } while ( CurrentCategories.Length > 0 );
+            var newCategory = new Category { CategoryId = randomId, CategoryName = categoryName, ParentId = parentId };
+            await db.Categories.AddAsync (newCategory);
+            await db.SaveChangesAsync ();
+        }
+        public static async Task<Category> GetCategory (int categoryId)
+        {
+            var db = new ShopContext ();
+            return await db.Categories.Where (x => x.CategoryId == categoryId).FirstAsync ();
+        }
+        public static async Task<Category> GetCategoryByName (string categoryName)
+        {
+            var db = new ShopContext ();
+            return await db.Categories.Where (x => x.CategoryName == categoryName).FirstAsync ();
+
+        }
+        public static async Task<Category[]> GetRootCategories ()
+        {
+            var db = new ShopContext ();
+            return await db.Categories.Where (x => x.ParentId == 0).ToArrayAsync ();
+        }
+        public static async Task<Category[]> GetChildCategories (int parentId)
+        {
+            var db = new ShopContext ();
+            return await db.Categories.Where (x => x.ParentId == parentId).ToArrayAsync ();
+        }
+        public static async Task EditCategoryName (int categoryId, string newName)
+        {
+            var db = new ShopContext ();
+            Category? category = await db.Categories.FindAsync (categoryId);
+            if ( category is not null
+                && category.CategoryName != newName )
+            {
+                category.CategoryName = newName;
+                await db.SaveChangesAsync ();
+            }
+        }
+        public static async Task<bool> CategoryExists (int categoryId)
+        {
+            var db = new ShopContext ();
+            return await db.Categories.FindAsync (categoryId) is not null;
+        }
+        public static async Task<bool> HasCategories (int categoryId)
+        {
+            var db = new ShopContext ();
+            return (await db.Categories.Where (x => x.ParentId == categoryId).ToArrayAsync ()).Length > 0;
+        }
+        public static async Task<bool> HasItems (int categoryId)
+        {
+            var db = new ShopContext ();
+            return (await db.Items.Where (x => x.CategoryId == categoryId).ToArrayAsync ()).Length > 0;
+        }
+        public static async Task DeleteCategory (int categoryId)
+        {
+            try
+            {
+                var db = new ShopContext ();
+                Category? category = await db.Categories.FindAsync (categoryId);
+                if ( category is not null )
+                {
+                    bool hasCategories = await HasCategories (category.CategoryId);
+                    bool hasItems = await HasItems (category.CategoryId);
+                    if ( !hasCategories && !hasItems )
+                    {
+                        db.Categories.Remove (category);
+                        await db.SaveChangesAsync ();
+                    }
+                    else if ( hasItems && !hasCategories )
+                    {
+                        Item[] CategoryItems = await db.Items.Where (x => x.CategoryId == categoryId).ToArrayAsync ();
+                        db.Items.RemoveRange (CategoryItems);
+                        await db.SaveChangesAsync ();
+                        db.Categories.Remove (category);
+                        await db.SaveChangesAsync ();
+                    }
+                    else if ( hasCategories && !hasItems )
+                    {
+                        Category[] ChildCategories = await db.Categories.Where (x => x.ParentId == categoryId).ToArrayAsync ();
+                        foreach ( Category c in ChildCategories )
+                        {
+                            await DeleteCategory (c.CategoryId);
+                        }
+                        db.Categories.Remove (category);
+                        await db.SaveChangesAsync ();
+                    }
+                }
+            }
+            catch ( Exception e )
+            {
+                Console.WriteLine (e);
             }
         }
     }

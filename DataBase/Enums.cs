@@ -10,17 +10,18 @@
     {
         Clear = 0,
         CreateCategory = 1,
-        EditCategory = 2,
-        DeleteCategory = 3,
-        DeleteItem = 9,
+        EditCategory ,
+        DeleteCategory,
         CreateItemName = 11,
-        CreateItemDesc = 12,
-        CreateItemImage = 13,
+        CreateItemGlobalPrice,
+        CreateItemDesc,
+        CreateItemImage,
         EditItemName = 21,
-        EditItemDesc = 22,
-        EditItemPrice = 23,
-        EditItemCategory = 24,
-        EditItemImage = 25,
+        EditItemDesc,
+        EditItemCategory,
+        EditItemImage,
+        DeleteItem,
+        CreateStore = 31
     }
 
     public enum OrderStatus : byte

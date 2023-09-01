@@ -18,15 +18,23 @@ namespace TelegramShop.DataBase
         [Key]
         public int PriceId { get; set; }
         public int ItemId { get; set; }
-        public int RegionId { get; set; }
+        public int StoreId { get; set; }
         public int PriceValue { get; set; }
     }
 
-    public partial class Region
+    public partial class Store
     {
         [Key]
-        public int RegionId { get; set; }
-        public string RegionName { get; set; }
+        public int StoreId { get; set; }
+        public string StoreName { get; set; }
+    }
+
+    public partial class StoreItemCount
+    {
+        public int Id { get; set; }
+        public int StoreId { get; set; }
+        public int ItemId { get; set; }
+        public int Count { get; set; }
     }
 
     public partial class Property
