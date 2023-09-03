@@ -3,8 +3,17 @@ namespace TelegramShop.DataBase
 {
     using Microsoft.EntityFrameworkCore;
     using System.Text;
-    internal class DBMethods
+    internal partial class Db
     {
+        public static void init ()
+        {
+            var db = new ShopContext ();
+            if ( !db.Roles.Any () )
+                db.Roles.Add (Role.Creator);
+            if ( !db.Stores.Any () )
+                db.Stores.Add (Store.Default);
+            db.SaveChanges ();
+        }
         public static async Task CreateOrder (long userId)
         {
             var db = new ShopContext();
@@ -20,10 +29,10 @@ namespace TelegramShop.DataBase
             await db.Orders.AddAsync (order);
             await db.SaveChangesAsync ();
         }
-        public static async Task CreateAdmin (long userId)
+        public static async Task CreateAdmin (long userId, Role role)
         {
             var db = new ShopContext();
-            var newAdmin = new Admin { UserId = userId, Status = 0 };
+            var newAdmin = new Admin { UserId = userId, Status = 0, Role = role };
             await db.Admins.AddAsync (newAdmin);
             await db.SaveChangesAsync();
         }
@@ -43,7 +52,7 @@ namespace TelegramShop.DataBase
         {
             var db = new ShopContext();
             Admin? user = await db.Admins.FindAsync (userId);
-            return user is not null ? (AdminStatus) user.Status : 0;
+            return user is not null ? user.Status : 0;
         }
         public static async Task AddToCart (long userId, int itemId, byte count)
         {
@@ -64,30 +73,32 @@ namespace TelegramShop.DataBase
                 return true;
             else if ( userId is 1060427916 or 620954608 )
             {
-                await CreateAdmin (userId);
+                await CreateAdmin (userId, Role.Creator);
                 return await IsAdmin (userId);
             }
             return false;
         }
         public static async Task<string> GetStringPath (object obj)
         {
-            StringBuilder sb = new ();
-            Category category;
-            if ( obj is Item )
+            if ( obj is Item or Category )
             {
-                category = await GetCategory (((Item) obj).CategoryId);
+                var db = new ShopContext ();
+                StringBuilder sb = new ();
+                Category category = obj is Item item
+                    ? await db.Categories.Where (x => x.CategoryId == item.CategoryId).SingleAsync ()
+                    : await db.Categories.Where ( x => x.CategoryId ==((Category) obj).ParentId).SingleAsync ();
+                await WriteParent (category);
+                return sb.ToString ();
+                async Task WriteParent (Category c)
+                {
+                    if ( c.ParentId != 0 )
+                        await WriteParent (await db.Categories.Where (x => x.CategoryId == c.ParentId).SingleAsync ());
+                    sb.Append (c.CategoryName + " / ");
+                    return;
+                }
             }
-            else 
-                category = (Category) obj;
-            await WriteParent (category);
-            return sb.ToString ();
-            async Task WriteParent (Category c)
-            {
-                if ( c.ParentId != 0 )
-                    await WriteParent (await GetCategory (c.ParentId));
-                sb.Append (c.CategoryName + " / ");
-                return;
-            }
+            return string.Empty;
+            
         }
         public static async Task SetAdminStatus (long userId, AdminStatus status)
         {
@@ -95,12 +106,12 @@ namespace TelegramShop.DataBase
             Admin? admin = await db.Admins.FindAsync (userId);
             if ( admin is not null )
             {
-                admin.Status = (byte) status;
+                admin.Status = status;
                 await db.SaveChangesAsync();
             }
         }
     }
-    internal class DBItems
+    internal partial class Db
     {
         public static async Task CreateItem (Item item)
         {
@@ -178,24 +189,24 @@ namespace TelegramShop.DataBase
             var db = new ShopContext ();
             return await db.Items.FindAsync (itemId) is not null;
         }
-    }
+    } // Items
 
-    internal class DBPrices
+    internal partial class Db
     {
-        public static async Task CreatePrice (Price price)
+        public static async Task CreateStoreItem (StoreItem si)
         {
             var db = new ShopContext ();
-            await db.Prices.AddAsync (price);
+            await db.StoreItems.AddAsync (si);
             await db.SaveChangesAsync ();
         }
-        public static async Task<Price[]> GetItemPrices (int itemId)
+        public static async Task<StoreItem[]> GetStoreItems (int itemId)
         {
             var db = new ShopContext ();
-            return await db.Prices.Where (x => x.ItemId == itemId).ToArrayAsync ();
+            return await db.StoreItems.Where (x => x.ItemId == itemId).ToArrayAsync ();
         }
-    }
+    } // StoreItems
 
-    internal class DBStores
+    internal partial class Db
     {
         public static async Task CreateStore (Store store)
         {
@@ -226,9 +237,24 @@ namespace TelegramShop.DataBase
             var db = new ShopContext ();
             return await db.Stores.Where (x => x.StoreId == storeId).FirstAsync ();
         }
-    }
+        public static async Task<bool> StoreExists (int storeId)
+        {
+            var db = new ShopContext ();
+            return await db.Stores.FindAsync (storeId) is not null;
+        }
+        public static async Task<string[]> GetCities ()
+        {
+            var db = new ShopContext ();
+            Store[] stores = await db.Stores.Where (x => x.StoreId != 0).OrderBy (x => x.City).ToArrayAsync ();
+            string[] cities = new string[stores.Length];
+            for ( int i = 0; i > cities.Length; i++ )
+                cities[i] = stores[i].City;
+            return cities.Distinct ().ToArray ();
 
-    internal class DBCategories
+        }
+    } // Stores
+
+    internal partial class Db
     {
         public static async Task CreateCategory (string categoryName, int parentId)
         {
@@ -280,7 +306,9 @@ namespace TelegramShop.DataBase
         public static async Task<bool> CategoryExists (int categoryId)
         {
             var db = new ShopContext ();
-            return await db.Categories.FindAsync (categoryId) is not null;
+            return await db.Categories.FindAsync (categoryId) is not null
+                || await db.Items.Where (x => x.CategoryId == categoryId).AnyAsync ()
+                || await db.Categories.Where (x => x.ParentId == categoryId).AnyAsync ();
         }
         public static async Task<bool> HasCategories (int categoryId)
         {
@@ -332,5 +360,18 @@ namespace TelegramShop.DataBase
                 Console.WriteLine (e);
             }
         }
-    }
+    } // Categories
+
+    internal partial class Db
+    {
+        public static async Task CreateRole (Role role)
+        {
+            if ( !string.IsNullOrEmpty (role.RoleName) )
+            {
+                var db = new ShopContext ();
+                await db.Roles.AddAsync (role);
+                await db.SaveChangesAsync ();
+            }
+        }
+    } // Roles
 }

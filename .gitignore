@@ -15,9 +15,10 @@
 /bin
 /obj
 .editorconfig
-TelegramShop.csproj.user
-TgBots.sln
-config.txt
+*.csproj.user
+*.sln
+*.txt
+*.png
 /Azure
 
 # User-specific files (MonoDevelop/Xamarin Studio)

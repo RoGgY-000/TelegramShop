@@ -2,8 +2,9 @@
 namespace TelegramShop.DataBase
 {
     using System.ComponentModel.DataAnnotations;
+    using System.ComponentModel.DataAnnotations.Schema;
 
-    public partial class Item
+    public class Item
     {
         [Key]
         public int ItemId { get; set; }
@@ -11,104 +12,137 @@ namespace TelegramShop.DataBase
         public string? Description { get; set; }
         public int CategoryId { get; set; }
         public byte[]? Image { get; set; }
+
+        [ForeignKey ("CategoryId")]
+        public Category Category { get; set; }
     }
 
-    public partial class Price
+    public class StoreItem
     {
         [Key]
-        public int PriceId { get; set; }
-        public int ItemId { get; set; }
+        public int Id { get; set; }
         public int StoreId { get; set; }
-        public int PriceValue { get; set; }
+        public int ItemId { get; set; }
+        public int Price { get; set; }
+        public int Count { get; set; }
+
+        [ForeignKey ("StoreId")]
+        public Store Store { get; set; }
+
+        [ForeignKey ("ItemId")]
+        public Item Item { get; set; }
     }
 
-    public partial class Store
+    public class Store
     {
         [Key]
         public int StoreId { get; set; }
         public string StoreName { get; set; }
-    }
+        public string City { get; set; }
+        public string? Adress { get; set; }
 
-    public partial class StoreItemCount
-    {
-        public int Id { get; set; }
-        public int StoreId { get; set; }
-        public int ItemId { get; set; }
-        public int Count { get; set; }
-    }
+        public static Store Default = new () { StoreId = 0, StoreName = "Default", City = "_" };
+}
 
-    public partial class Property
+    public class Property
     {
         [Key]
         public int PropertyId { get; set; }
         public string Name { get; set; }
         public string? Description { get; set; }
+        public PropertyType Type { get; set; }
     }
 
-    public partial class IntProperty
+    public class IntProperty
     {
         [Key]
         public int Id { get; set; }
         public int ItemId { get; set; }
         public int PropertyId { get; set; }
         public int PropertyValue { get; set; }
+
+        [ForeignKey ("ItemId")]
+        public Item Item { get; set; }
+
+        [ForeignKey ("PropertyId")]
+        public Property Property { get; set; }
     }
 
-    public partial class StringProperty
+    public class StringProperty
     {
         [Key]
         public int Id { get; set; }
         public int ItemId { get; set; }
         public int PropertyId { get; set; }
         public string PropertyValue { get; set; }
+
+        [ForeignKey ("ItemId")]
+        public Item Item { get; set; }
+
+        [ForeignKey ("PropertyId")]
+        public Property Property { get; set; }
     }
 
-    public partial class Category
+    public class Category
     {
         [Key]
         public int CategoryId { get; set; }
         public string CategoryName { get; set; }
         public int ParentId { get; set; }
         public int Weight { get; set; }
+
+        [ForeignKey ("ParentId")]
+        public Category? Parent { get; set; }
     }
 
-    public partial class Order
+    public class Order
     {
         [Key]
         public int OrderId { get; set; }
         public long UserId { get; set; }
         public DateTime OrderDateTime { get; set; }
         public int Summ { get; set; }
-        public byte OrderStatus { get; set; }
+        public OrderStatus OrderStatus { get; set; }
     }
 
-    public partial class OrderItem
+    public class OrderItem
     {
         [Key]
         public int OrderId { get; set; }
         public int ItemId { get; set; }
         public int Count { get; set; }
-        public int ItemPriceId { get; set; }
+        public int Price { get; set; }
+
+        [ForeignKey ("OrderId")]
+        public Order Order { get; set; }
+
+        [ForeignKey ("ItemId")]
+        public Item Item { get; set; }
     }
 
-    public partial class Admin
+    public class Admin
     {
         [Key]
         public long UserId { get; set; }
-        public byte Status { get; set; }
-        public int Role { get; set; }
+        public AdminStatus Status { get; set; }
+        public int RoleId { get; set; }
+
+        [ForeignKey ("RoleId")]
+        public Role Role { get; set; }
     }
 
-    public partial class Role
+    public class Role
     {
         [Key]
         public int RoleId { get; set; }
         public string RoleName { get; set; }
         public string? Description { get; set; }
         public byte Level { get; set; }
+
+        public static Role Creator = new () { RoleId = 0, RoleName = "Creator", Level = 255 };
     }
 
-    public partial class Permission
+    public class Permission
     {
         [Key]
         public int PermissionId { get; set; }
@@ -116,11 +150,17 @@ namespace TelegramShop.DataBase
         public string? Description { get; set; }
     }
 
-    public partial class RolePermission
+    public class RolePermission
     {
         [Key]
         public int Id { get; set; }
         public int RoleId { get; set; }
         public int PermissionId { get; set; }
+
+        [ForeignKey ("RoleId")]
+        public Role Role { get; set; }
+
+        [ForeignKey ("PermissionId")]
+        public Permission Permission { get; set; }
     }
 }

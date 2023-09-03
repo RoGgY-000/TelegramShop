@@ -27,7 +27,7 @@ namespace TelegramShop.Keyboards
         });
         public static async Task<InlineKeyboardMarkup> Menu (long userId)
         {
-            OrderItem[] userCart = await DBMethods.GetUserCart (userId);
+            OrderItem[] userCart = await Db.GetUserCart (userId);
             int cartCount = userCart is null ? 0 : userCart.Length;
             return new (new[]
             {
@@ -58,7 +58,7 @@ namespace TelegramShop.Keyboards
             var Category = new List<List<InlineKeyboardButton>> ();
             if ( items != null && items.Length > 0 )
             {
-                Category category = await DBMethods.GetCategory (items[0].CategoryId);
+                Category category = await Db.GetCategory (items[0].CategoryId);
                 foreach ( Item i in items )
                 {
                     var itemButton = InlineKeyboardButton.WithCallbackData (text: i.ItemName, callbackData: $"item {i.ItemId:d10}");
@@ -79,7 +79,7 @@ namespace TelegramShop.Keyboards
         }
         public static async Task<InlineKeyboardMarkup> Item (int itemId, byte page)
         {
-            var item = await DBMethods.GetItem (itemId);
+            var item = await Db.GetItem (itemId);
             InlineKeyboardMarkup Markup = new (new[]
             {
             new[]
@@ -133,22 +133,22 @@ namespace TelegramShop.Keyboards
         }
         public static async Task<InlineKeyboardMarkup> EditCategory (int categoryId)
         {
-            Category category = await DBMethods.GetCategory (categoryId);
+            Category category = await Db.GetCategory (categoryId);
             var CategoryButtons = new List<InlineKeyboardButton>
             {
                 InlineKeyboardButton.WithCallbackData(text: "Подкатегории", callbackData: $"edit_categories {category.CategoryId:d10}"),
                 InlineKeyboardButton.WithCallbackData(text: "Товары", callbackData: $"edit_items {category.CategoryId:d10}")
             };
-            if ( await DBMethods.HasCategories (category.CategoryId) )
+            if ( await Db.HasCategories (category.CategoryId) )
             {
                 CategoryButtons.Remove (CategoryButtons[1]);
-                Category[] childCategories = await DBMethods.GetChildCategories (category.CategoryId);
+                Category[] childCategories = await Db.GetChildCategories (category.CategoryId);
                 CategoryButtons[0].Text = $"Подкатегории ({childCategories.Length})";
             }
-            else if ( await DBMethods.HasItems (category.CategoryId) )
+            else if ( await Db.HasItems (category.CategoryId) )
             {
                 CategoryButtons.Remove (CategoryButtons[0]);
-                CategoryButtons[0].Text += $" ({await DBMethods.GetItemCountInCategory (category.CategoryId)})";
+                CategoryButtons[0].Text += $" ({await Db.GetItemCountInCategory (category.CategoryId)})";
             }
             List<List<InlineKeyboardButton>> Buttons = new List<List<InlineKeyboardButton>> { CategoryButtons }.Concat (
             new List<List<InlineKeyboardButton>>
@@ -171,7 +171,7 @@ namespace TelegramShop.Keyboards
         }
         public static async Task<InlineKeyboardMarkup> EditCategories (int parentId)
         {
-            Category[] categories = await DBMethods.GetChildCategories (parentId);
+            Category[] categories = await Db.GetChildCategories (parentId);
             var CategoryButtons = new List<List<InlineKeyboardButton>> ();
             foreach ( Category c in categories )
             {
@@ -210,7 +210,7 @@ namespace TelegramShop.Keyboards
         }
         public static async Task<InlineKeyboardMarkup> EditItem (int itemId)
         {
-            Item item = await DBMethods.GetItem (itemId);
+            Item item = await Db.GetItem (itemId);
 
             var NameButton = InlineKeyboardButton.WithCallbackData (text: "Изменить название", callbackData: $"edit_item_name {item.ItemId:d10}");
             var NameList = new List<InlineKeyboardButton> { NameButton };
@@ -249,7 +249,7 @@ namespace TelegramShop.Keyboards
         }
         public static async Task<InlineKeyboardMarkup> Stores ()
         {
-            Store[] Stores = await DBShops.GetStores ();
+            Store[] Stores = await Db.GetStores ();
             var buttons = new List<List<InlineKeyboardButton>> ();
             foreach ( Store Store in Stores )
             {

@@ -21,7 +21,9 @@
         EditItemCategory,
         EditItemImage,
         DeleteItem,
-        CreateStore = 31
+        CreateStoreName = 31,
+        CreateStoreCity,
+        CreateStoreAdress
     }
 
     public enum OrderStatus : byte
@@ -40,5 +42,11 @@
         Cancelled,
         Stopped,
         Returned
+    }
+
+    public enum PropertyType : byte
+    {
+        Int,
+        String
     }
 }
