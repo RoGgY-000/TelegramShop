@@ -3,15 +3,19 @@ namespace TelegramShop.DataBase
 {
     using Microsoft.EntityFrameworkCore;
     using System.Text;
+    using TelegramShop.Enums;
+
     internal partial class Db
     {
-        public static void init ()
+        public static void Init ()
         {
             var db = new ShopContext ();
             if ( !db.Roles.Any () )
                 db.Roles.Add (Role.Creator);
             if ( !db.Stores.Any () )
                 db.Stores.Add (Store.Default);
+            if ( !db.Permissions.Any () )
+                db.Permissions.AddRange (Permission.AllPermissions);
             db.SaveChanges ();
         }
         public static async Task CreateOrder (long userId)
@@ -242,16 +246,16 @@ namespace TelegramShop.DataBase
             var db = new ShopContext ();
             return await db.Stores.FindAsync (storeId) is not null;
         }
-        public static async Task<string[]> GetCities ()
-        {
-            var db = new ShopContext ();
-            Store[] stores = await db.Stores.Where (x => x.StoreId != 0).OrderBy (x => x.City).ToArrayAsync ();
-            string[] cities = new string[stores.Length];
-            for ( int i = 0; i > cities.Length; i++ )
-                cities[i] = stores[i].City;
-            return cities.Distinct ().ToArray ();
+        //public static async Task<string[]> GetCities ()
+        //{
+        //    var db = new ShopContext ();
+        //    Store[] stores = await db.Stores.Where (x => x.StoreId != 0).OrderBy (x => x.City).ToArrayAsync ();
+        //    string[] cities = new string[stores.Length];
+        //    for ( int i = 0; i > cities.Length; i++ )
+        //        cities[i] = stores[i].City;
+        //    return cities.Distinct ().ToArray ();
 
-        }
+        //}
     } // Stores
 
     internal partial class Db
@@ -374,4 +378,27 @@ namespace TelegramShop.DataBase
             }
         }
     } // Roles
+
+    internal partial class Db
+    {
+        public static async Task<string[]> GetUserPermissions (long userId)
+        {
+            var db = new ShopContext ();
+            Admin? user = await db.Admins.FindAsync (userId);
+            if ( user is not null )
+            {
+                Role? role = await db.Roles.FindAsync (user.RoleId);
+
+                if ( role is not null )
+                {
+                    RolePermission[] rolePermissions = await db.RolePermissions.Where (x => x.RoleId == role.RoleId).ToArrayAsync ();
+                    string[] result = new string[rolePermissions.Length];
+                    for ( int i = 0; i < rolePermissions.Length; i++ )
+                        result[i] = rolePermissions[i].Query;
+                    return result;
+                }
+            }
+            return Array.Empty<string> ();
+        }
+    } // Permissions
 }

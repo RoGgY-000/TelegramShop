@@ -1,6 +1,7 @@
 ﻿
 namespace TelegramShop.DataBase
 {
+    using TelegramShop.Enums;
     using System.ComponentModel.DataAnnotations;
     using System.ComponentModel.DataAnnotations.Schema;
 
@@ -39,18 +40,18 @@ namespace TelegramShop.DataBase
         public int StoreId { get; set; }
         public string StoreName { get; set; }
         public string City { get; set; }
-        public string? Adress { get; set; }
+        public string Adress { get; set; }
 
-        public static Store Default = new () { StoreId = 0, StoreName = "Default", City = "_" };
-}
+        public static Store Default = new () { StoreId = 0, StoreName = "Default", City = "Default", Adress = "Default" };
+    }
 
     public class Property
     {
         [Key]
         public int PropertyId { get; set; }
+        public int CategoryId { get; set; }
         public string Name { get; set; }
         public string? Description { get; set; }
-        public PropertyType Type { get; set; }
     }
 
     public class IntProperty
@@ -108,6 +109,7 @@ namespace TelegramShop.DataBase
     public class OrderItem
     {
         [Key]
+        public int Id { get; set; }
         public int OrderId { get; set; }
         public int ItemId { get; set; }
         public int Count { get; set; }
@@ -145,9 +147,18 @@ namespace TelegramShop.DataBase
     public class Permission
     {
         [Key]
-        public int PermissionId { get; set; }
-        public string PermissionName { get; set; }
-        public string? Description { get; set; }
+        public string query { get; set; }
+        private string PermissionName { get; set; }
+        public virtual string Query => query;
+        public static Permission[] AllPermissions = new Permission[]
+        {
+            new Permission {query = "admin", PermissionName = "Панель администратора"},
+            new Permission {query = "orders", PermissionName = "Меню заказов"},
+            new Permission {query = "edit_catalog", PermissionName = "Меню изменения каталога"},
+            new Permission {query = "stores", PermissionName = "Меню магазинов"},
+            new Permission {query = "roles", PermissionName = "Меню ролей"},
+
+        };
     }
 
     public class RolePermission
@@ -155,12 +166,12 @@ namespace TelegramShop.DataBase
         [Key]
         public int Id { get; set; }
         public int RoleId { get; set; }
-        public int PermissionId { get; set; }
+        public string Query { get; set; }
 
         [ForeignKey ("RoleId")]
         public Role Role { get; set; }
 
-        [ForeignKey ("PermissionId")]
+        [ForeignKey ("Query")]
         public Permission Permission { get; set; }
     }
 }

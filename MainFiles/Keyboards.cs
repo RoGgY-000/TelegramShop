@@ -22,7 +22,7 @@ namespace TelegramShop.Keyboards
             },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData ( text: "Магазины", callbackData: "Stores")
+                InlineKeyboardButton.WithCallbackData ( text: "Магазины", callbackData: "stores")
             }
         });
         public static async Task<InlineKeyboardMarkup> Menu (long userId)
@@ -104,7 +104,7 @@ namespace TelegramShop.Keyboards
         public static async Task<InlineKeyboardMarkup> EditCatalog (Category[] categories)
         {
             var Catalog = new List<List<InlineKeyboardButton>> ();
-            if ( categories != null && categories.Length > 0 )
+            if ( categories is not null && categories.Length > 0 )
             {
                 foreach ( Category c in categories )
                 {
