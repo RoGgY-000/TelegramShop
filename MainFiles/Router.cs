@@ -15,7 +15,7 @@ namespace TelegramShop.Routing
     {
         private static readonly Dictionary<string, MethodInfo> Methods = new ();
 
-        private const string badChars = "'\"*&^%$#@!{}[]`~;\\|=+<>?№/";
+        private const string badChars = "'\"{}[]\\|+<>";
 
         public static void Init ()
         {
@@ -35,67 +35,73 @@ namespace TelegramShop.Routing
         }
         public static async Task<(string, InlineKeyboardMarkup)> GetResponseAsync (Update update)
         {
-            (string, InlineKeyboardMarkup)? result = null;
-            switch ( update.Type )
+            try
             {
-                case UpdateType.Message:
-                    if ( update.Message is not null
-                        && update.Message.Text is not null
-                        && update.Message.From is not null )
-                    {
-                        string text = RemoveBadChars (update.Message.Text);
-                        if ( Methods.ContainsKey (text)
-                            && Methods.TryGetValue (text, out MethodInfo? Method)
-                            && Method is not null )
-                            result = await (Task<(string, InlineKeyboardMarkup)>) Method.Invoke (obj: Method, parameters: new object[] { update });
-                        else if ( Methods.TryGetValue ("default", out MethodInfo? Default)
-                            && Default is not null )
-                            result = await (Task<(string, InlineKeyboardMarkup)>) Default.Invoke (obj: Default, parameters: new object[] { update });
-                    }
-                    break;
-                case UpdateType.CallbackQuery:
-                    if ( update.CallbackQuery is not null
-                        && update.CallbackQuery.Data is not null )
-                    {
-                        string data = update.CallbackQuery.Data;
-                        string parameters = string.Empty;
-                        if ( data.Contains ('?') )
+                (string, InlineKeyboardMarkup)? result = null;
+                switch ( update.Type )
+                {
+                    case UpdateType.Message:
+                        if ( update.Message is not null
+                            && update.Message.Text is not null
+                            && update.Message.From is not null )
                         {
-                            parameters = data[data.IndexOf ('?')..];
+                            string text = RemoveBadChars (update.Message.Text);
+                            if ( Methods.ContainsKey (text)
+                                && Methods.TryGetValue (text, out MethodInfo? Method)
+                                && Method is not null )
+                                result = await (Task<(string, InlineKeyboardMarkup)>) Method.Invoke (obj: Method, parameters: new object[] { update });
+                            else if ( Methods.TryGetValue ("default", out MethodInfo? Default)
+                                && Default is not null )
+                                result = await (Task<(string, InlineKeyboardMarkup)>) Default.Invoke (obj: Default, parameters: new object[] { update });
                         }
-                        string query = data.Contains('?') ? data[..data.IndexOf ('?')] : data;
-                        if ( Methods.ContainsKey (query)
-                        && Methods.TryGetValue (query, out MethodInfo? Method)
-                        && Method is not null )
-                        { 
-                            ParameterInfo[] Parameters = Method.GetParameters ();
-                            object[] ParametersValues = new object[Parameters.Length];
-                            ParametersValues[0] = update;
-                            if ( Parameters.Length > 1 )
+                        break;
+                    case UpdateType.CallbackQuery:
+                        if ( update.CallbackQuery is not null
+                            && update.CallbackQuery.Data is not null )
+                        {
+                            string data = update.CallbackQuery.Data;
+                            string parameters = string.Empty;
+                            if ( data.Contains ('?') )
                             {
-                                for ( int i = 0; i < Parameters.Length; i++ )
+                                parameters = data[data.IndexOf ('?')..];
+                            }
+                            string query = data.Contains ('?') ? data[..data.IndexOf ('?')] : data;
+                            if ( Methods.ContainsKey (query)
+                            && Methods.TryGetValue (query, out MethodInfo? Method)
+                            && Method is not null )
+                            {
+                                ParameterInfo[] Parameters = Method.GetParameters ();
+                                object[] ParametersValues = new object[Parameters.Length];
+                                ParametersValues[0] = update;
+                                if ( Parameters.Length > 1 )
                                 {
-                                    if ( Parameters[i].HasDefaultValue )
-                                        ParametersValues[i] = Parameters[i].DefaultValue;
-                                    else if ( Parameters[i].Name is not null
-                                        && parameters.Contains (Parameters[i].Name) )
+                                    for ( int i = 1; i < Parameters.Length; i++ )
                                     {
-                                        int ValueIndex = parameters.IndexOf (Parameters[i].Name) + Parameters[i].Name.Length + 1;
-                                        if ( int.TryParse (parameters.AsSpan (ValueIndex, 10), out int value) )
+                                        if ( Parameters[i].Name is not null
+                                            && parameters.Contains (Parameters[i].Name) )
                                         {
-                                            ParametersValues[i + 1] = value;
+                                            int ValueIndex = parameters.IndexOf (Parameters[i].Name) + Parameters[i].Name.Length + 1;
+                                            if ( int.TryParse (parameters.AsSpan (ValueIndex, 10), out int value) )
+                                            {
+                                                ParametersValues[i] = value;
+                                            }
                                         }
+                                        else if ( Parameters[i].HasDefaultValue )
+                                            ParametersValues[i] = Parameters[i].DefaultValue;
                                     }
                                 }
+                                result = await (Task<(string, InlineKeyboardMarkup)>) Method.Invoke (obj: Method, parameters: ParametersValues);
                             }
-                            result = await (Task<(string, InlineKeyboardMarkup)>) Method.Invoke (obj: Method, parameters: ParametersValues);
                         }
-                    }
-                    break;
+                        break;
+                }
+                return result is ValueTuple<string, InlineKeyboardMarkup> tuple
+                    ? tuple
+                    : throw new ArgumentException ();
             }
-            return result is ValueTuple<string, InlineKeyboardMarkup> tuple
-                ? tuple
-                : throw new ArgumentException ();
+            catch (Exception e)
+            { Console.WriteLine (e);
+                return ("Ошибка", InlineKeyboardMarkup.Empty ()); }
         }
         public static string RemoveBadChars (string text)
         {
@@ -128,7 +134,7 @@ namespace TelegramShop.Routing
             switch (update.Type)
             {
                 case UpdateType.Message:
-                    return update.Message.Text;
+                    return RemoveBadChars (update.Message.Text);
                 case UpdateType.CallbackQuery:
                     string data = update.CallbackQuery.Data?? string.Empty;
                     return RemoveBadChars (data.Contains ('?') ? data[..data.IndexOf ('?')] : data);

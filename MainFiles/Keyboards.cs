@@ -3,37 +3,51 @@ namespace TelegramShop.Keyboards
 {
     using Telegram.Bot.Types.ReplyMarkups;
     using TelegramShop.DataBase;
+    using TelegramShop.Caching;
+
+    public class ButtonGenerator
+    {
+        public static async Task<InlineKeyboardButton[]?> GetButton ( string text, string data, bool checkPermission, long userId = 0 )
+        {
+            if ( checkPermission )
+            {
+                if ( await Db.HasPermission (userId, data) )
+                    return new InlineKeyboardButton[] { InlineKeyboardButton.WithCallbackData (text: text, callbackData: data) };
+                else return null;
+            }
+            else return new InlineKeyboardButton[] { InlineKeyboardButton.WithCallbackData (text: text, callbackData: data) }; ;
+        }
+        public static async Task<InlineKeyboardMarkup> GetOneButtonMarkup (string text, string data) =>
+            new InlineKeyboardMarkup (InlineKeyboardButton.WithCallbackData (text, data));
+
+    }
 
     public class Kb
     {
-        public static InlineKeyboardMarkup Admin = new (new[]
+        public static async Task<InlineKeyboardMarkup> Admin (long userId)
         {
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData( text: "Товары", callbackData: "edit_catalog" )
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData( text: "Заказы", callbackData: "orders" )
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData( text: "Роли", callbackData: "roles" )
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData ( text: "Магазины", callbackData: "stores")
-            }
-        });
+            return new InlineKeyboardMarkup
+            (
+                new List<InlineKeyboardButton[]>
+                {
+                await ButtonGenerator.GetButton ("Товары", "edit_catalog", true, userId),
+                await ButtonGenerator.GetButton ("Заказы", "orders", true, userId),
+                await ButtonGenerator.GetButton ("Роли", "roles", true, userId),
+                await ButtonGenerator.GetButton ("Магазины", "edit_stores", true, userId),
+                }
+            );
+        }
         public static async Task<InlineKeyboardMarkup> Menu (long userId)
         {
-            OrderItem[] userCart = await Db.GetUserCart (userId);
-            int cartCount = userCart is null ? 0 : userCart.Length;
-            return new (new[]
-            {
-                InlineKeyboardButton.WithCallbackData(text: "Каталог", callbackData: "catalog"),
-                InlineKeyboardButton.WithCallbackData(text: $"Корзина ({cartCount})", callbackData: "cart")
-            });
+            int cartCount = await Db.GetItemCountInCart (userId);
+            return new InlineKeyboardMarkup
+            (
+                new List<InlineKeyboardButton[]>
+                {
+                await ButtonGenerator.GetButton ("Каталог", "catalog", false, userId),
+                await ButtonGenerator.GetButton ($"Корзина ({cartCount})", "cart", false, userId)
+                }
+            );
         }
         public static async Task<InlineKeyboardMarkup> Catalog (Category[]? categories)
         {
@@ -61,11 +75,11 @@ namespace TelegramShop.Keyboards
                 Category category = await Db.GetCategory (items[0].CategoryId);
                 foreach ( Item i in items )
                 {
-                    var itemButton = InlineKeyboardButton.WithCallbackData (text: i.ItemName, callbackData: $"item {i.ItemId:d10}");
+                    var itemButton = InlineKeyboardButton.WithCallbackData (text: i.ItemName, callbackData: $"item?id={i.ItemId:d10}");
                     var itemList = new List<InlineKeyboardButton> { itemButton };
                     Category.Add (itemList);
                 }
-                var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"category {items[0].CategoryId:d10}");
+                var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"category?{items[0].CategoryId:d10}");
                 var backList = new List<InlineKeyboardButton> { back };
                 var toMainMenu = InlineKeyboardButton.WithCallbackData (text: "В главное меню", callbackData: "menu");
                 var toMainMenuList = new List<InlineKeyboardButton> { toMainMenu };
@@ -108,12 +122,12 @@ namespace TelegramShop.Keyboards
             {
                 foreach ( Category c in categories )
                 {
-                    var categoryButton = InlineKeyboardButton.WithCallbackData (text: c.CategoryName, callbackData: $"edit_category {c.CategoryId:d10}");
+                    var categoryButton = InlineKeyboardButton.WithCallbackData (text: c.CategoryName, callbackData: $"edit_category?id={c.CategoryId:d10}");
                     var categoryList = new List<InlineKeyboardButton> { categoryButton };
                     Catalog.Add (categoryList);
                 }
             }
-            var append = InlineKeyboardButton.WithCallbackData (text: "Добавить категорию", callbackData: $"create_category {0:d10}");
+            var append = InlineKeyboardButton.WithCallbackData (text: "Добавить категорию", callbackData: $"create_category?parentId={0:d10}");
             var AppendList = new List<InlineKeyboardButton> { append };
             Catalog.Add (AppendList);
             var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: "admin");
@@ -126,7 +140,7 @@ namespace TelegramShop.Keyboards
         {
             var markup = new InlineKeyboardMarkup (new[]
             {
-                InlineKeyboardButton.WithCallbackData(text:"Назад", callbackData: $"edit_category {parentId:d10}")
+                InlineKeyboardButton.WithCallbackData(text:"Назад", callbackData: $"edit_category?id={parentId:d10}")
             });
 
             return markup;
@@ -136,8 +150,8 @@ namespace TelegramShop.Keyboards
             Category category = await Db.GetCategory (categoryId);
             var CategoryButtons = new List<InlineKeyboardButton>
             {
-                InlineKeyboardButton.WithCallbackData(text: "Подкатегории", callbackData: $"edit_categories {category.CategoryId:d10}"),
-                InlineKeyboardButton.WithCallbackData(text: "Товары", callbackData: $"edit_items {category.CategoryId:d10}")
+                InlineKeyboardButton.WithCallbackData(text: "Подкатегории", callbackData: $"edit_categories?id={category.CategoryId:d10}"),
+                InlineKeyboardButton.WithCallbackData(text: "Товары", callbackData: $"edit_items?categoryId={category.CategoryId:d10}")
             };
             if ( await Db.HasCategories (category.CategoryId) )
             {
@@ -155,15 +169,15 @@ namespace TelegramShop.Keyboards
             {
                 new List<InlineKeyboardButton>
                 {
-                    InlineKeyboardButton.WithCallbackData(text: "Название", callbackData: $"edit_category_name {category.CategoryId:d10}")
+                    InlineKeyboardButton.WithCallbackData(text: "Название", callbackData: $"edit_category_name?id={category.CategoryId:d10}")
                 },
                 new List<InlineKeyboardButton>
                 {
-                    InlineKeyboardButton.WithCallbackData(text: "Удалить эту категорию", callbackData: $"delete_category {category.CategoryId:d10}")
+                    InlineKeyboardButton.WithCallbackData(text: "Удалить эту категорию", callbackData: $"delete_category?id={category.CategoryId:d10}")
                 },
                 new List<InlineKeyboardButton>
                 {
-                    InlineKeyboardButton.WithCallbackData(text: "Назад", callbackData: $"edit_category {category.ParentId:d10}")
+                    InlineKeyboardButton.WithCallbackData(text: "Назад", callbackData: $"edit_category?id={category.ParentId:d10}")
                 }
             }).ToList ();
             var Markup = new InlineKeyboardMarkup (Buttons);
@@ -175,13 +189,13 @@ namespace TelegramShop.Keyboards
             var CategoryButtons = new List<List<InlineKeyboardButton>> ();
             foreach ( Category c in categories )
             {
-                var categoryButton = InlineKeyboardButton.WithCallbackData (text: c.CategoryName, callbackData: $"edit_category {c.CategoryId:d10}");
+                var categoryButton = InlineKeyboardButton.WithCallbackData (text: c.CategoryName, callbackData: $"edit_category?id={c.CategoryId:d10}");
                 var categoryList = new List<InlineKeyboardButton> { categoryButton };
                 CategoryButtons.Add (categoryList);
             }
-            var addButton = InlineKeyboardButton.WithCallbackData (text: "Добавить подкатегорию", callbackData: $"create_category {parentId:d10}");
+            var addButton = InlineKeyboardButton.WithCallbackData (text: "Добавить подкатегорию", callbackData: $"create_category?parentId={parentId:d10}");
             var addList = new List<InlineKeyboardButton> { addButton };
-            var backButton = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"edit_category {parentId:d10}");
+            var backButton = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"edit_category?id={parentId:d10}");
             var backList = new List<InlineKeyboardButton> { backButton };
             CategoryButtons.AddRange (new List<List<InlineKeyboardButton>> { addList, backList });
             return new InlineKeyboardMarkup (CategoryButtons);
@@ -193,14 +207,14 @@ namespace TelegramShop.Keyboards
             {
                 foreach ( Item i in items )
                 {
-                    var item = InlineKeyboardButton.WithCallbackData (text: i.ItemName, callbackData: $"edit_item {i.ItemId:d10}");
+                    var item = InlineKeyboardButton.WithCallbackData (text: i.ItemName, callbackData: $"edit_item?id={i.ItemId:d10}");
                     var itemList = new List<InlineKeyboardButton> { item };
                     Category.Add (itemList);
                 }
             }
-            var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"edit_category {categoryId:d10}");
+            var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"edit_category?id={categoryId:d10}");
             var backList = new List<InlineKeyboardButton> { back };
-            var append = InlineKeyboardButton.WithCallbackData (text: "Добавить товар", callbackData: $"create_item {categoryId:d10}");
+            var append = InlineKeyboardButton.WithCallbackData (text: "Добавить товар", callbackData: $"create_item?categoryId={categoryId:d10}");
             var appendList = new List<InlineKeyboardButton> { append };
             var toMainMenu = InlineKeyboardButton.WithCallbackData (text: "В главное меню", callbackData: "admin");
             var toMainMenuList = new List<InlineKeyboardButton> { toMainMenu };
@@ -212,22 +226,22 @@ namespace TelegramShop.Keyboards
         {
             Item item = await Db.GetItem (itemId);
 
-            var NameButton = InlineKeyboardButton.WithCallbackData (text: "Изменить название", callbackData: $"edit_item_name {item.ItemId:d10}");
+            var NameButton = InlineKeyboardButton.WithCallbackData (text: "Изменить название", callbackData: $"edit_item_name?id={item.ItemId:d10}");
             var NameList = new List<InlineKeyboardButton> { NameButton };
 
-            var PriceButton = InlineKeyboardButton.WithCallbackData (text: "Изменить цену", callbackData: $"edit_item_price {item.ItemId:d10}");
+            var PriceButton = InlineKeyboardButton.WithCallbackData (text: "Изменить цену", callbackData: $"edit_item_prices?id={item.ItemId:d10}");
             var PriceList = new List<InlineKeyboardButton> { PriceButton };
 
-            var DescButton = InlineKeyboardButton.WithCallbackData (text: "Изменить описание", callbackData: $"edit_item_desc {item.ItemId:d10}");
+            var DescButton = InlineKeyboardButton.WithCallbackData (text: "Изменить описание", callbackData: $"edit_item_desc?id={item.ItemId:d10}");
             var DescList = new List<InlineKeyboardButton> { DescButton };
 
-            var CategoryButton = InlineKeyboardButton.WithCallbackData (text: "Изменить категорию", callbackData: $"edit_item_category {item.ItemId:d10}");
+            var CategoryButton = InlineKeyboardButton.WithCallbackData (text: "Изменить категорию", callbackData: $"edit_item_category?id={item.ItemId:d10}");
             var CategoryList = new List<InlineKeyboardButton> { CategoryButton };
 
-            var DeleteButton = InlineKeyboardButton.WithCallbackData (text: "Удалить товар", callbackData: $"delete_item {item.ItemId:d10}");
+            var DeleteButton = InlineKeyboardButton.WithCallbackData (text: "Удалить товар", callbackData: $"delete_item?id={item.ItemId:d10}");
             var DeleteList = new List<InlineKeyboardButton> { DeleteButton };
 
-            var BackButton = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"edit_items {item.CategoryId:d10}");
+            var BackButton = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"edit_items?categoryId={item.CategoryId:d10}");
             var BackList = new List<InlineKeyboardButton> { BackButton };
 
             var toMainMenu = InlineKeyboardButton.WithCallbackData (text: "В главное меню", callbackData: "admin");
@@ -247,13 +261,13 @@ namespace TelegramShop.Keyboards
             });
             return markup;
         }
-        public static async Task<InlineKeyboardMarkup> Stores ()
+        public static async Task<InlineKeyboardMarkup> EditStores ()
         {
             Store[] Stores = await Db.GetStores ();
             var buttons = new List<List<InlineKeyboardButton>> ();
             foreach ( Store Store in Stores )
             {
-                var button = InlineKeyboardButton.WithCallbackData (text: Store.StoreName, callbackData: $"edit_store {Store.StoreId:d10}");
+                var button = InlineKeyboardButton.WithCallbackData (text: Store.StoreName, callbackData: $"edit_store?id={Store.StoreId:d10}");
                 var buttonList = new List<InlineKeyboardButton> { button };
                 buttons.Add (buttonList);
             }
@@ -264,5 +278,22 @@ namespace TelegramShop.Keyboards
             buttons.AddRange (new List<List<InlineKeyboardButton>> { addList, backList });
             return new InlineKeyboardMarkup (buttons);
         }
+        public static async Task<InlineKeyboardMarkup> EditStore (int storeId)
+        {
+            var buttons = new List<InlineKeyboardButton[]> ();
+            buttons.Add (await ButtonGenerator.GetButton (text: "Изменить название", data: $"edit_store_name?id={storeId:d10}", checkPermission: false));
+            buttons.Add (await ButtonGenerator.GetButton (text: "Изменить регион", data: $"edit_store_region?id={storeId:d10}", checkPermission: false));
+            if (storeId != 1)
+                buttons.Add (await ButtonGenerator.GetButton (text: "Удалить магазин", data: $"delete_store?id={storeId:d10}", checkPermission: false));
+            buttons.Add (await ButtonGenerator.GetButton (text: "Назад", data: "edit_stores", checkPermission: false));
+            return new InlineKeyboardMarkup (buttons);
+        }
+        //public static async Task<InlineKeyboardMarkup> EditPrices (int itemId)
+        //{
+        //    Item item = await Db.GetItem (itemId);
+            
+        //    var buttons = new List<InlineKeyboardButton[]> ();
+            
+        //}
     }
 }

@@ -5,68 +5,62 @@ namespace TelegramShop
     using Telegram.Bot.Types.ReplyMarkups;
     using Telegram.Bot.Types.Enums;
     using Telegram.Bot.Types;
-    using TelegramShop.Caching;
     using TelegramShop.Routing;
-    using TelegramShop.Enums;
-    using TelegramShop.Keyboards;
     using TelegramShop.DataBase;
     using TelegramShop.AES;
-    using Update = Telegram.Bot.Types.Update;
     using Newtonsoft.Json;
-    using System.Text;
 
     internal class Program
     {   // Bot
         private static ITelegramBotClient bot = new TelegramBotClient (AESEncoding.GetToken ());
-        private static Dictionary<long, Item> ItemCache = new ();
-        private static Dictionary<long, Category> CategoryCache = new ();
-        private static Dictionary<long, Store> StoreCache = new ();
-        private const string badChars = "'\"*&^%$#@!{}[]`~;\\|=+<>?№";
 
         private static async Task HandleUpdateAsync (ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            DateTime start = DateTime.Now;
-            Console.WriteLine ("\n" + update.Type + " " + start);
-            long userId = Router.GetUserId (update);
-            string Query = Router.GetQuery (update);
-            bool hasPermission = await Cache.HasPermission (userId, Query);
-            (string ReplyText, InlineKeyboardMarkup ReplyMarkup) = (string.Empty, InlineKeyboardMarkup.Empty ());
-            if ( await Cache.HasPermission (userId, Query) )
-                (ReplyText, ReplyMarkup) = await Router.GetResponseAsync (update);
-            else
-                ReplyText = "Недостаточно прав!";
-            if ( update.Type is UpdateType.Message
-                && update.Message is not null
-                && update.Message.Text is not null
-                && update.Message.From is not null )
+            try
             {
-                Message message = update.Message;
-                Console.WriteLine (message.From.Username);
-                Console.WriteLine (message.Text);
-                await botClient.SendTextMessageAsync (update.Message.Chat.Id,
-                    ReplyText,
-                    replyMarkup: ReplyMarkup);
-            }
+                DateTime start = DateTime.Now;
+                Console.WriteLine ("\n" + update.Type + " " + start);
+                long userId = Router.GetUserId (update);
+                string Query = Router.GetQuery (update);
+                (string ReplyText, InlineKeyboardMarkup ReplyMarkup) = (string.Empty, InlineKeyboardMarkup.Empty ());
+                if ( update.Type is UpdateType.Message
+                    && update.Message is not null
+                    && update.Message.Text is not null
+                    && update.Message.From is not null )
+                {
+                    Message message = update.Message;
+                    Console.WriteLine (message.From.Username);
+                    Console.WriteLine (message.Text);
+                    (ReplyText, ReplyMarkup) = await Router.GetResponseAsync (update);
+                    await botClient.SendTextMessageAsync (update.Message.Chat.Id,
+                        ReplyText,
+                        replyMarkup: ReplyMarkup);
+                }
 
-            else if ( update.Type is UpdateType.CallbackQuery
-                && update.CallbackQuery is not null
-                && update.CallbackQuery.Message is not null
-                && update.CallbackQuery.Data is not null 
-                && update.CallbackQuery.From is not null)
-            {
-                CallbackQuery query = update.CallbackQuery;
-                Console.WriteLine (string.Join (", ", (query.From.FirstName,
-                                                        query.From.LastName,
-                                                        query.From.Username)));
-                Console.WriteLine (query.Data);
-                await botClient.EditMessageTextAsync (chatId: query.From.Id,
-                    messageId: query.Message.MessageId,
-                    text: ReplyText,
-                    replyMarkup: ReplyMarkup);
+                else if ( update.Type is UpdateType.CallbackQuery
+                    && update.CallbackQuery is not null
+                    && update.CallbackQuery.Message is not null
+                    && update.CallbackQuery.Data is not null
+                    && update.CallbackQuery.From is not null )
+                {
+                    CallbackQuery query = update.CallbackQuery;
+                    Console.WriteLine (string.Join (", ", (query.From.FirstName,
+                                                            query.From.LastName,
+                                                            query.From.Username)));
+                    Console.WriteLine (query.Data);
+                    if ( await Db.HasPermission (userId, Query) )
+                        (ReplyText, ReplyMarkup) = await Router.GetResponseAsync (update);
+                    else
+                        ReplyText = "Недостаточно прав!";
+                    await botClient.EditMessageTextAsync (chatId: query.From.Id,
+                        messageId: query.Message.MessageId,
+                        text: ReplyText,
+                        replyMarkup: ReplyMarkup);
+                }
+                double end = (DateTime.Now - start).TotalMilliseconds;
+                Console.WriteLine ($"Responsed in {(int) end}ms");
             }
-            double end = (DateTime.Now - start).TotalMilliseconds;
-            Console.WriteLine ($"Responsed in {(int) end}ms");
-            
+            catch (Exception e){ Console.WriteLine (e); }
         }
 
         //private static async Task HandleUpdateAsyncOld (ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)

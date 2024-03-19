@@ -9,4 +9,10 @@ namespace TelegramShop.Attributes
         public string[] Routes { get; set; }
         public RouteAttribute (params string[] routes) => Routes = routes;
     }
+
+    class AccessAttribute : Attribute
+    {
+        public string[] Permissions { get; set; }
+        public AccessAttribute (params string[] permissions) => Permissions = permissions;
+    }
 }

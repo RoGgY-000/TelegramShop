@@ -23,8 +23,11 @@ public enum AdminStatus : byte
     EditItemImage,
     DeleteItem,
     CreateStoreName = 31,
-    CreateStoreCity,
-    CreateStoreAdress
+    CreateStoreRegion,
+    CreateStoreAdress,
+    EditStoreName,
+    EditStoreRegion,
+    DeleteStore
 }
 
 public enum OrderStatus : byte

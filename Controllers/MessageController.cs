@@ -12,7 +12,7 @@
 
     internal class MessageController
     {
-        [Route ("/start")]
+        [Route ("/start", "menu")]
         public static async Task<(string, InlineKeyboardMarkup)> Start (Update update)
         {
             long userId = Router.GetUserId (update);
@@ -22,10 +22,18 @@
         [Route ("/admin", "admin")]
         public static async Task<(string, InlineKeyboardMarkup)> Admin (Update update)
         {
+
             long userId = Router.GetUserId (update);
             return await Db.IsAdmin (userId)
-                ? ((string, InlineKeyboardMarkup)) ("Многофункциональная панель администратора", Kb.Admin)
+                ? ("Многофункциональная панель администратора", await Kb.Admin (userId))
                 : ("Здравствуйте, это магазин в телеграме.", await Kb.Menu (userId));
+        }
+
+        [Route ("/clear")]
+        public static async Task<(string,InlineKeyboardMarkup)> ClearDB (Update update)
+        {
+            Db.ClearDB ();
+            return ("Cleared", InlineKeyboardMarkup.Empty ());
         }
 
         [Route ("default")]
@@ -39,51 +47,44 @@
             switch ( await Db.GetAdminStatus (userId) )
             {
                 case AdminStatus.CreateCategory:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? category)
-                        && category is not null
+                    if ( Db.TryGetFromCache (userId, out object? category)
                         && category is Category categoryToCreate )
                         await Db.CreateCategory (text, categoryToCreate.ParentId);
                     replyText = await Db.GetCategoryByName (text) is not null
                         ? $"Категория \"{text}\" успешно создана!"
                         : "Не удалось создать категорию!";
                     await Db.SetAdminStatus (userId, AdminStatus.Clear);
+                    await Db.RemoveUser (userId);
                     break;
                 case AdminStatus.EditCategory:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? category1)
-                        && category1 is not null
+                    if ( Db.TryGetFromCache (userId, out object? category1)
                         && category1 is Category categoryToEdit
                         && Db.GetCategory (categoryToEdit.CategoryId) is not null )
                     {
                         await Db.EditCategoryName (categoryToEdit.CategoryId, text);
                         replyText = (await Db.GetCategory (categoryToEdit.CategoryId)).CategoryName == text
                             ? "Название категории успешно изменено." : "failed";
-                        Cache.RemoveUser (userId);
+                        await Db.RemoveUser (userId);
                         await Db.SetAdminStatus (userId, AdminStatus.Clear);
                     }
                     break;
                 case AdminStatus.DeleteCategory:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? category2)
-                        && category2 is not null
+                    if ( Db.TryGetFromCache (userId, out object? category2)
                         && category2 is Category categoryToDelete
-                        && text == (await Db.GetCategory (categoryToDelete.CategoryId)).CategoryName )
+                        && text == categoryToDelete.CategoryName )
                     {
                         await Db.DeleteCategory (categoryToDelete.CategoryId);
                         replyText = !await Db.CategoryExists (categoryToDelete.CategoryId)
                             ? $"Категория \"{categoryToDelete.CategoryName}\" и все категории и товары в ней успешно удалены"
                             : $"Не удалось удалить категорию \"{categoryToDelete.CategoryName}\"!";
                         await Db.SetAdminStatus (userId, AdminStatus.Clear);
-                        Cache.RemoveUser (userId);
+                        await Db.RemoveUser (userId);
                     }
                     else
                         replyText = "Название не совпадает!";
                     break;
                 case AdminStatus.DeleteItem:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? item)
-                        && item is not null
+                    if ( Db.TryGetFromCache (userId, out object? item)
                         && item is Item itemToDelete
                         && text == (await Db.GetItem (itemToDelete.ItemId)).ItemName )
                     {
@@ -92,43 +93,44 @@
                             ? $"Товар \"{itemToDelete.ItemName}\" успешно удалён"
                             : $"Не удалось удалить товар \"{itemToDelete.ItemName}\"!";
                         await Db.SetAdminStatus (userId, AdminStatus.Clear);
-                        Cache.RemoveUser (userId);
+                        await Db.RemoveUser (userId);
                     }
                     else
                         replyText = "Название не совпадает!";
                     break;
                 case AdminStatus.CreateItemName:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? item1)
+                    if ( Db.TryGetFromCache (userId, out object? item1)
                        && item1 is Item itemToCreate )
                     {
                         itemToCreate.ItemName = text ?? string.Empty;
+                        await Db.SetAdminStatus (userId, AdminStatus.CreateItemDesc);
+                        replyText = "Введите описание товара (введите '_', чтобы оставить пустым):";
+                    }
+                    break;
+                case AdminStatus.CreateItemDesc:
+                    if ( Db.TryGetFromCache (userId, out object? item3)
+                        && item3 is Item itemToCreate3 )
+                    {
+                        itemToCreate3.Description = (text == "_") ? null : text;
                         await Db.SetAdminStatus (userId, AdminStatus.CreateItemGlobalPrice);
                         replyText = "Введите стартовую (глобальную) цену товара:";
                     }
                     break;
                 case AdminStatus.CreateItemGlobalPrice:
                     if ( int.TryParse (text, out int newPrice)
-                        && Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? item2)
-                        && item2 is not null
+                        && Db.TryGetFromCache (userId, out object? item2)
                         && item2 is Item itemToCreate2 )
                     {
-                        var globalPrice = new StoreItem { ItemId = itemToCreate2.ItemId, Price = newPrice, StoreId = 0 };
+                        var globalPrice = new StoreItem { ItemId = itemToCreate2.ItemId, Price = newPrice, StoreId = Store.Default.StoreId };
                         await Db.CreateStoreItem (globalPrice);
-                        await Db.SetAdminStatus (userId, AdminStatus.CreateItemDesc);
-                        replyText = "Введите описание товара (введите '_', чтобы оставить пустым):";
-                    }
-                    break;
-                case AdminStatus.CreateItemDesc:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? item3)
-                        && item3 is not null
-                        && item3 is Item itemToCreate3 )
-                    {
-                        itemToCreate3.Description = (text == "_") ? null : text;
                         await Db.SetAdminStatus (userId, AdminStatus.CreateItemImage);
-                        replyText = "Отправьте карточку товара:";
+                        itemToCreate2 = await Db.CreateItem (itemToCreate2);
+                        if ( await Db.ItemExists (itemToCreate2.ItemId) )
+                        {
+                            await Db.CreateStoreItem (new StoreItem { ItemId = itemToCreate2.ItemId, Price = newPrice, StoreId = Store.Default.StoreId });
+                            replyText = $"Товар {itemToCreate2.ItemName} успешно создан";
+                            ReplyMarkup = await Kb.Back ($"edit_item?id={itemToCreate2.ItemId:d10}");
+                        }
                     }
                     break;
                 case AdminStatus.CreateItemImage:
@@ -136,26 +138,22 @@
                     {
                         var stream = new MemoryStream ();
                         //    Console.WriteLine (message.Photo.Last ().FileId);
-                        if ( Cache.ContainsKey (userId)
-                            && Cache.TryGetValue (userId, out object? item4)
-                            && item4 is not null
+                        if ( Db.TryGetFromCache (userId, out object? item4)
                             && item4 is Item itemToCreate4 )
                         {
                             await Db.CreateItem (itemToCreate4);
                             if ( await Db.ItemExists (itemToCreate4.ItemId) )
                             {
                                 replyText = $"Товар {itemToCreate4.ItemName} успешно создан";
-                                ReplyMarkup = await Kb.Back ($"edit_item {itemToCreate4.ItemId:d10}");
+                                ReplyMarkup = await Kb.Back ($"edit_item?id={itemToCreate4.ItemId:d10}");
                             }
                         }
                     }
                     await Db.SetAdminStatus (userId, AdminStatus.Clear);
-                    Cache.RemoveUser (userId);
+                    await Db.RemoveUser (userId);
                     break;
                 case AdminStatus.EditItemName:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? item5)
-                        && item5 is not null
+                    if ( Db.TryGetFromCache (userId, out object? item5)
                         && item5 is Item itemToEdit
                         && await Db.ItemExists (itemToEdit.ItemId) )
                     {
@@ -163,13 +161,11 @@
                         if ( (await Db.GetItem (itemToEdit.ItemId)).ItemName == text )
                             replyText = "Название товара успешно изменено.";
                     }
-                    Cache.RemoveUser (userId);
+                    await Db.RemoveUser (userId);
                     await Db.SetAdminStatus (userId, AdminStatus.Clear);
                     break;
                 case AdminStatus.EditItemDesc:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? item6)
-                        && item6 is not null
+                    if ( Db.TryGetFromCache (userId, out object? item6)
                         && item6 is Item itemToEdit1
                         && await Db.ItemExists (itemToEdit1.ItemId) )
                     {
@@ -177,44 +173,79 @@
                         if ( (await Db.GetItem (itemToEdit1.ItemId)).Description == text )
                             replyText = "Описание товара успешно изменено.";
                     }
-                    Cache.RemoveUser (userId);
+                    await Db.RemoveUser (userId);
                     await Db.SetAdminStatus (userId, AdminStatus.Clear);
                     break;
                 case AdminStatus.CreateStoreName:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? store)
-                        && store is not null
+                    if ( Db.TryGetFromCache (userId, out object? store)
                         && store is Store storeToCreate )
                     {
                         storeToCreate.StoreName = text;
-                        await Db.SetAdminStatus (userId, AdminStatus.CreateStoreCity);
-                        replyText = "Введите город, в котором расположен магазин:";
+                        await Db.SetAdminStatus (userId, AdminStatus.CreateStoreRegion);
+                        replyText = "Введите регион, в котором расположен магазин:";
                     }
                     break;
-                case AdminStatus.CreateStoreCity:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? store1)
-                        && store1 is not null
+                case AdminStatus.CreateStoreRegion:
+                    if ( Db.TryGetFromCache (userId, out object? store1)
                         && store1 is Store storeToCreate1 )
                     {
-                        storeToCreate1.City = text;
+                        storeToCreate1.Region = text;
                         await Db.SetAdminStatus (userId, AdminStatus.CreateStoreAdress);
                         replyText = "Введите адрес магазина:";
                     }
                     break;
                 case AdminStatus.CreateStoreAdress:
-                    if ( Cache.ContainsKey (userId)
-                        && Cache.TryGetValue (userId, out object? store2)
-                        && store2 is not null
+                    if ( Db.TryGetFromCache (userId, out object? store2)
                         && store2 is Store storeToCreate2 )
                     {
                         storeToCreate2.Adress = text;
-                        await Db.CreateStore (storeToCreate2);
+                        storeToCreate2 = await Db.CreateStore (storeToCreate2);
+                        await Db.AddToCache (userId, storeToCreate2);
                         if ( await Db.StoreExists (storeToCreate2.StoreId) )
                             replyText = "Магазин успешно создан!";
                         await Db.SetAdminStatus (userId, AdminStatus.Clear);
-                        ReplyMarkup = await Kb.Back ($"edit_store {storeToCreate2.StoreId:d10}");
+                        await Db.RemoveUser (userId);
+                        ReplyMarkup = await Kb.Back ($"edit_store?id={storeToCreate2.StoreId:d10}");
                     }
+                    break;
+                case AdminStatus.EditStoreName:
+                    if (Db.TryGetFromCache (userId, out object? store3)
+                        && store3 is Store storeToEdit
+                        && await Db.StoreExists (storeToEdit.StoreId))
+                    {
+                        await Db.EditStoreName (storeToEdit.StoreId, text);
+                        if ( (await Db.GetStore (storeToEdit.StoreId)).StoreName == text )
+                            replyText = "Название магазина успешно изменено.";
+                    }
+                    await Db.RemoveUser (userId);
+                    await Db.SetAdminStatus (userId, AdminStatus.Clear);
+                    break;
+                case AdminStatus.EditStoreRegion:
+                    if ( Db.TryGetFromCache (userId, out object? store4)
+                        && store4 is Store storeToEdit1
+                        && await Db.StoreExists (storeToEdit1.StoreId) )
+                    {
+                        await Db.EditStoreRegion (storeToEdit1.StoreId, text);
+                        if ( (await Db.GetStore (storeToEdit1.StoreId)).Region == text )
+                            replyText = "Регион магазина успешно изменён.";
+                    }
+                    await Db.RemoveUser (userId);
+                    await Db.SetAdminStatus (userId, AdminStatus.Clear);
+                    break;
+                case AdminStatus.DeleteStore:
+                    if ( Db.TryGetFromCache (userId, out object? store5)
+                        && store5 is Store storeToDelete
+                        && await Db.StoreExists (storeToDelete.StoreId)
+                        && text == (await Db.GetStore (storeToDelete.StoreId)).StoreName)
+                    {
+                        await Db.DeleteStore (storeToDelete.StoreId);
+                        replyText = !await Db.StoreExists (storeToDelete.StoreId)
+                            ? $"Магазин \"{storeToDelete.StoreName}\" успешно удалён"
+                            : $"Не удалось удалить магазин \"{storeToDelete.StoreName}\"!";
+                        
+                    }
+                    await Db.SetAdminStatus (userId, AdminStatus.Clear);
+                    await Db.RemoveUser (userId);
                     break;
                 default: replyText = "Unknown text!"; break;
             }
