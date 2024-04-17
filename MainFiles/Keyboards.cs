@@ -5,20 +5,28 @@ namespace TelegramShop.Keyboards
     using TelegramShop.DataBase;
     using TelegramShop.Caching;
 
-    public class ButtonGenerator
+    public class BtnGenerator
     {
-        public static async Task<InlineKeyboardButton[]?> GetButton ( string text, string data, bool checkPermission, long userId = 0 )
+        public static async Task<InlineKeyboardButton[]> GetButton ( string text, string data, bool checkPermission, long userId = 0 )
         {
             if ( checkPermission )
             {
                 if ( await Db.HasPermission (userId, data) )
                     return new InlineKeyboardButton[] { InlineKeyboardButton.WithCallbackData (text: text, callbackData: data) };
-                else return null;
+                else return Array.Empty<InlineKeyboardButton> ();
             }
             else return new InlineKeyboardButton[] { InlineKeyboardButton.WithCallbackData (text: text, callbackData: data) }; ;
         }
         public static async Task<InlineKeyboardMarkup> GetOneButtonMarkup (string text, string data) =>
             new InlineKeyboardMarkup (InlineKeyboardButton.WithCallbackData (text, data));
+        public static async Task<InlineKeyboardButton[]> Back (string cbData)
+            => new InlineKeyboardButton[] { InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: cbData) };
+        public static async Task<InlineKeyboardButton[]> ToAdminMenu ()
+            => new InlineKeyboardButton[] { InlineKeyboardButton.WithCallbackData (text: "В главное меню", callbackData: "admin") };
+        public static async Task<InlineKeyboardButton[]> ToMainMenu ()
+               => new InlineKeyboardButton[] { InlineKeyboardButton.WithCallbackData (text: "В главное меню", callbackData: "menu") };
+        public static async Task<InlineKeyboardButton> GetBtn (string text, string data)
+            => InlineKeyboardButton.WithCallbackData (text: text, callbackData: data);
 
     }
 
@@ -30,10 +38,10 @@ namespace TelegramShop.Keyboards
             (
                 new List<InlineKeyboardButton[]>
                 {
-                await ButtonGenerator.GetButton ("Товары", "edit_catalog", true, userId),
-                await ButtonGenerator.GetButton ("Заказы", "orders", true, userId),
-                await ButtonGenerator.GetButton ("Роли", "roles", true, userId),
-                await ButtonGenerator.GetButton ("Магазины", "edit_stores", true, userId),
+                await BtnGenerator.GetButton ("Товары", "edit_catalog", true, userId),
+                await BtnGenerator.GetButton ("Заказы", "orders", true, userId),
+                await BtnGenerator.GetButton ("Роли", "edit_roles", true, userId),
+                await BtnGenerator.GetButton ("Магазины", "edit_stores", true, userId),
                 }
             );
         }
@@ -44,68 +52,78 @@ namespace TelegramShop.Keyboards
             (
                 new List<InlineKeyboardButton[]>
                 {
-                await ButtonGenerator.GetButton ("Каталог", "catalog", false, userId),
-                await ButtonGenerator.GetButton ($"Корзина ({cartCount})", "cart", false, userId)
+                await BtnGenerator.GetButton ("Каталог", "catalog", false, userId),
+                await BtnGenerator.GetButton ($"Корзина ({cartCount})", "cart", false, userId)
                 }
             );
         }
-        public static async Task<InlineKeyboardMarkup> Catalog (Category[]? categories)
+        public static async Task<InlineKeyboardMarkup> Catalog (int page, int maxPage)
         {
-            var Catalog = new List<List<InlineKeyboardButton>> ();
+            var Catalog = new List<InlineKeyboardButton[]> ();
+            Category[] categories = await Db.GetCategoriesPage (5, page);
             if ( categories is not null && categories.Length > 0 )
             {
                 foreach ( Category c in categories )
-                {
-                    var categoryButton = InlineKeyboardButton.WithCallbackData (text: c.CategoryName, callbackData: $"category {c.CategoryId:d10}");
-                    var categoryList = new List<InlineKeyboardButton> { categoryButton };
-                    Catalog.Add (categoryList);
-                }
+                    Catalog.Add (await BtnGenerator.GetButton (c.CategoryName, $"category?id={c.CategoryId:d10}&page={page:d10}", false));
             }
-            var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: "menu");
-            var backList = new List<InlineKeyboardButton> { back };
-            Catalog.Add (backList);
+            var Arrows = new List<InlineKeyboardButton> ();
+            if ( page > 1 )
+                Arrows.Add (await BtnGenerator.GetBtn ("<", $"catalog?page={page - 1:d10}"));
+            if ( page < maxPage )
+                Arrows.Add (await BtnGenerator.GetBtn (">", $"catalog?page={page + 1:d10}"));
+            if ( Arrows.Count > 0 )
+                Catalog.Add (Arrows.ToArray ());
+            Catalog.Add (await BtnGenerator.Back ("menu"));
             return new InlineKeyboardMarkup (Catalog);
-
         }
-        public static async Task<InlineKeyboardMarkup> ItemsInCategory (Item[] items)
+        public static async Task<InlineKeyboardMarkup> CategoriesInCategory (int id, int page)
         {
-            var Category = new List<List<InlineKeyboardButton>> ();
+            var buttons = new List<InlineKeyboardButton[]> ();
+            foreach ( Category c in await Db.GetChildCategories (id) )
+                buttons.Add (await BtnGenerator.GetButton (c.CategoryName, $"category?id={c.CategoryId:d10}&page={page:d10}", false));
+            buttons.Add (await BtnGenerator.Back ($"category?id={(await Db.GetCategory (id)).ParentId:d10}&page={page:d10}"));
+            buttons.Add (await BtnGenerator.ToMainMenu ());
+            return new InlineKeyboardMarkup (buttons);
+        }
+        public static async Task<InlineKeyboardMarkup> ItemsInCategory (int id, int page)
+        {
+            Item[] items = await Db.GetItemsByCategory (id);
+            Category c = await Db.GetCategory (id);
+            var Category = new List<InlineKeyboardButton[]> ();
             if ( items != null && items.Length > 0 )
             {
-                Category category = await Db.GetCategory (items[0].CategoryId);
                 foreach ( Item i in items )
-                {
-                    var itemButton = InlineKeyboardButton.WithCallbackData (text: i.ItemName, callbackData: $"item?id={i.ItemId:d10}");
-                    var itemList = new List<InlineKeyboardButton> { itemButton };
-                    Category.Add (itemList);
-                }
-                var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: $"category?{items[0].CategoryId:d10}");
-                var backList = new List<InlineKeyboardButton> { back };
-                var toMainMenu = InlineKeyboardButton.WithCallbackData (text: "В главное меню", callbackData: "menu");
-                var toMainMenuList = new List<InlineKeyboardButton> { toMainMenu };
-                Category.AddRange (new List<List<InlineKeyboardButton>> { backList, toMainMenuList });
+                    Category.Add (await BtnGenerator.GetButton (i.ItemName, $"item?id={i.ItemId:d10}&page={page:d10}", false ));
             }
+            Category.Add (await BtnGenerator.Back ($"category?id={c.ParentId:d10}"));
+            Category.Add (await BtnGenerator.ToMainMenu ());
             return new InlineKeyboardMarkup (Category);
         }
-        public static async Task<InlineKeyboardMarkup> Cart (long userId)
+        public static async Task<InlineKeyboardMarkup> Cart (OrderItem[] items)
         {
-            return null;
+            var buttons = new List<InlineKeyboardButton[]> ();
+            for (int i = 0; i < items.Length; i++ )
+                buttons.Add (new InlineKeyboardButton[]
+                {
+                    await BtnGenerator.GetBtn ((i+1).ToString (), " "),
+                    await BtnGenerator.GetBtn ("Кол-во", $"edit_orderitem_count?id={items[i].Id:d10}"),
+                    await BtnGenerator.GetBtn ("Удалить", $"delete_orderitem?id={items[i].Id:d10}")
+                });
+            if (items.Length > 0 )
+                buttons.Add (await BtnGenerator.GetButton ("Оформить заказ", $"make_order?id={items[0].OrderId:d10}", false));
+            buttons.Add (await BtnGenerator.ToMainMenu ());
+            return new InlineKeyboardMarkup (buttons);
         }
-        public static async Task<InlineKeyboardMarkup> Item (int itemId, byte page)
+        public static async Task<InlineKeyboardMarkup> Item (int itemId, int page)
         {
-            var item = await Db.GetItem (itemId);
-            InlineKeyboardMarkup Markup = new (new[]
+            Item item = await Db.GetItem (itemId);
+            var buttons = new List<InlineKeyboardButton[]> ();
+            buttons.AddRange (new InlineKeyboardButton[][]
             {
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData(text: "В корзину", callbackData: $"in_cart {itemId:d10} {page:d3}")
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData(text: "Назад", callbackData: $"catalog {page}")
-            }
+                await BtnGenerator.GetButton ("В корзину", $"in_cart?id={itemId:d10}&page={page:d10}", false),
+                await BtnGenerator.Back($"category?id={item.CategoryId:d10}")
             });
-            return Markup;
+            return new InlineKeyboardMarkup (buttons);
         }
         public static async Task<InlineKeyboardMarkup> SelectCount (int itemId, byte page)
         {
@@ -133,8 +151,7 @@ namespace TelegramShop.Keyboards
             var back = InlineKeyboardButton.WithCallbackData (text: "Назад", callbackData: "admin");
             var backList = new List<InlineKeyboardButton> { back };
             Catalog.Add (backList);
-            var Markup = new InlineKeyboardMarkup (Catalog);
-            return Markup;
+            return new InlineKeyboardMarkup (Catalog);
         }
         public static async Task<InlineKeyboardMarkup> CreateCategory (int parentId)
         {
@@ -280,20 +297,116 @@ namespace TelegramShop.Keyboards
         }
         public static async Task<InlineKeyboardMarkup> EditStore (int storeId)
         {
-            var buttons = new List<InlineKeyboardButton[]> ();
-            buttons.Add (await ButtonGenerator.GetButton (text: "Изменить название", data: $"edit_store_name?id={storeId:d10}", checkPermission: false));
-            buttons.Add (await ButtonGenerator.GetButton (text: "Изменить регион", data: $"edit_store_region?id={storeId:d10}", checkPermission: false));
+            var buttons = new List<InlineKeyboardButton[]>
+            {
+                await BtnGenerator.GetButton (text: "Изменить название", data: $"edit_store_name?id={storeId:d10}", checkPermission: false),
+                await BtnGenerator.GetButton (text: "Изменить регион", data: $"edit_store_region?id={storeId:d10}", checkPermission: false)
+            };
             if (storeId != 1)
-                buttons.Add (await ButtonGenerator.GetButton (text: "Удалить магазин", data: $"delete_store?id={storeId:d10}", checkPermission: false));
-            buttons.Add (await ButtonGenerator.GetButton (text: "Назад", data: "edit_stores", checkPermission: false));
+                buttons.Add (await BtnGenerator.GetButton (text: "Удалить магазин", data: $"delete_store?id={storeId:d10}", checkPermission: false));
+            buttons.Add (await BtnGenerator.GetButton (text: "Назад", data: "edit_stores", checkPermission: false));
             return new InlineKeyboardMarkup (buttons);
         }
-        //public static async Task<InlineKeyboardMarkup> EditPrices (int itemId)
+        public static async Task<InlineKeyboardMarkup> EditPrices (int itemId)
+        {
+            var buttons = new List<InlineKeyboardButton[]> ();
+            Item item = await Db.GetItem (itemId);
+            StoreItem[] prices = await Db.GetStoreItems (itemId);
+            Store[] stores = new Store[prices.Length];
+            for ( int i = 0; i < prices.Length; i++ )
+                stores[i] = await Db.GetStore (prices[i].StoreId);
+            for ( int i = 0; i < stores.Length; i++ )
+                buttons.Add (await BtnGenerator.GetButton (text: $"{stores[i].StoreName}: {prices[i].Price}", data: $"edit_item_price?id={prices[i].Id:d10}", checkPermission: false));
+            if ( stores.Length < (await Db.GetStores ()).Length )
+                buttons.Add (await BtnGenerator.GetButton ("Добавить цену", $"create_item_price?id={itemId:d10}", false));
+            buttons.AddRange (new InlineKeyboardButton[][]
+            {
+                await BtnGenerator.Back ($"edit_item?id={item.ItemId:d10}"),
+                await BtnGenerator.ToAdminMenu ()
+            });
+            return new InlineKeyboardMarkup (buttons);
+        }
+        public static async Task<InlineKeyboardMarkup> CreateItemPrice (int itemId)
+        {
+            var buttons = new List<InlineKeyboardButton[]> ();
+            Store[] stores = await Db.GetStoresWithoutItem (itemId);
+            foreach (Store s in stores)
+                buttons.Add (await BtnGenerator.GetButton (s.StoreName, $"create_storeitem?itemId={itemId:d10}&storeId={s.StoreId:d10}", false));
+            buttons.AddRange ( new InlineKeyboardButton[][] {
+                await BtnGenerator.Back ($"edit_item_prices?id={itemId:d10}"),
+                await BtnGenerator.ToAdminMenu ()
+            });
+            return new InlineKeyboardMarkup (buttons);
+        }
+        public static async Task<InlineKeyboardMarkup> EditPrice (StoreItem si)
+        {
+            return new InlineKeyboardMarkup ((new InlineKeyboardButton[][]
+            {
+                await BtnGenerator.GetButton ("Изменить цену", $"edit_storeitem_price?id={si.Id:d10}", false),
+                await BtnGenerator.GetButton ("Изменить количество", $"edit_storeitem_count?id={si.Id:d10}", false),
+                await BtnGenerator.GetButton ("Удалить товар из этого магазина", $"delete_storeitem?id={si.Id:d10}", false),
+                await BtnGenerator.Back ($"edit_item_prices?id={si.ItemId:d10}"),
+                await BtnGenerator.ToAdminMenu ()
+            }));
+        }
+        public static async Task<InlineKeyboardMarkup> EditRoles ()
+        {
+            Role[] roles = await Db.GetRoles ();
+            var buttons = new List<InlineKeyboardButton[]> ();
+            foreach ( Role r in roles )
+                buttons.Add (await BtnGenerator.GetButton (r.RoleName, $"edit_role?id={r.RoleId:d10}", false));
+            buttons.AddRange (new InlineKeyboardButton[][]
+            {
+                await BtnGenerator.GetButton ("Добавить роль", "create_role", false),
+                await BtnGenerator.ToAdminMenu (),
+            });
+            return new InlineKeyboardMarkup (buttons);
+        }
+        public static async Task<InlineKeyboardMarkup> CreateRolePermissions (int roleId)
+        {
+            var buttons = new List<InlineKeyboardButton[]> ();
+            foreach (Permission p in Permission.ItemsAndCategories)
+                if (await Db.RolePermissionExists (roleId, p.query))
+                {
+                    buttons.Add (await BtnGenerator.GetButton ("Товары и категории", $"create_rolepermissions_items?roleId={roleId:d10}", false));
+                    break;
+                }
+            foreach ( Permission p in Permission.Orders )
+                if ( await Db.RolePermissionExists (roleId, p.query) )
+                {
+                    buttons.Add (await BtnGenerator.GetButton ("Заказы", $"create_rolepermissions_orders?roleId={roleId:d10}", false));
+                    break;
+                }
+            foreach ( Permission p in Permission.Roles )
+                if ( await Db.RolePermissionExists (roleId, p.query) )
+                {
+                    buttons.Add (await BtnGenerator.GetButton ("Роли", $"create_rolepermissions_roles?roleId={roleId:d10}", false));
+                    break;
+                }
+            foreach ( Permission p in Permission.Stores )
+                if ( await Db.RolePermissionExists (roleId, p.query) )
+                {
+                    buttons.Add (await BtnGenerator.GetButton ("Магазины", $"create_rolepermissions_stores?roleId={roleId:d10}", false));
+                    break;
+                }
+            buttons.Add (await BtnGenerator.Back ("edit_roles"));
+            return new InlineKeyboardMarkup (buttons);
+        }
+        public static async Task<InlineKeyboardMarkup> Orders ()
+        {
+            var buttons = new List<InlineKeyboardButton[]> ();
+            foreach (Order o in await Db.GetOrders ())
+                buttons.Add (await BtnGenerator.GetButton ($"№{o.OrderId:d10} - {(long)(DateTime.UtcNow-o.OrderDateTime).TotalMinutes:d} минут назад", $"admin_order?id={o.OrderId:d10}", false));
+            buttons.Add (await BtnGenerator.ToAdminMenu ());
+            return new InlineKeyboardMarkup (buttons);
+        }
+        //public static async Task<InlineKeyboardMarkup> CreateRolePermissionsItems (int roleId)
         //{
-        //    Item item = await Db.GetItem (itemId);
-            
         //    var buttons = new List<InlineKeyboardButton[]> ();
-            
+        //    foreach ( Permission p in Permission.ItemsAndCategories )
+        //        buttons.Add (await BtnGenerator.GetButton (p.PermissionName, $"create_rolepermission?roleId={roleId:d10}", false));
+        //    buttons.Add (await BtnGenerator.Back ("admin"));
+        //    return new InlineKeyboardMarkup (buttons);
         //}
     }
 }

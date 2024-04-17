@@ -9,10 +9,11 @@ namespace TelegramShop.DataBase
     internal partial class Db
     {
         public static Cache EditCache = new ();
-        public static Cache UserPermissionCache = new ();
-        public static Cache StoreCache = new ();
-        public static Cache RoleCache = new ();
-        public static Cache RolePermissionCache = new ();
+        public static Cache SelectCountCache = new ();
+        private static Cache UserPermissionCache = new ();
+        private static Cache StoreCache = new ();
+        private static Cache RoleCache = new ();
+        private static Cache RolePermissionCache = new ();
 
         private static Cache[] Caches = new Cache[]
         {
@@ -49,7 +50,11 @@ namespace TelegramShop.DataBase
             }
             return false;
         }
-        public static async Task RemoveUser (long userId) => EditCache.RemovePair (userId);
+        public static async Task RemoveUser (long userId)
+        {
+            SelectCountCache.RemovePair (userId);
+            EditCache.RemovePair (userId);
+        }
         public static async Task AddToCache (long key, object obj) => EditCache.AddPair (key, obj);
         public static bool TryGetFromCache (long key, out object obj)
         {
@@ -115,21 +120,6 @@ namespace TelegramShop.DataBase
             Db.ClearCache ();
             Db.UpdateCache ();
         }
-        public static async Task CreateOrder (long userId)
-        {
-            var db = new ShopContext();
-            var random = new Random();
-            int randomId;
-            Order[] CurrentOrders;
-            do
-            {
-                randomId = random.Next (1, int.MaxValue);
-                CurrentOrders = await db.Orders.Where (x => x.OrderId == randomId).ToArrayAsync();
-            } while ( CurrentOrders.Length > 0 );
-            var order = new Order { OrderId = randomId, UserId = userId, OrderStatus = (byte) OrderStatus.Cart};
-            await db.Orders.AddAsync (order);
-            await db.SaveChangesAsync ();
-        }
         public static async Task CreateAdmin (long userId, Role role)
         {
             var db = new ShopContext();
@@ -137,35 +127,11 @@ namespace TelegramShop.DataBase
             await db.Admins.AddAsync (newAdmin);
             await db.SaveChangesAsync();
         }
-        public static async Task<OrderItem[]> GetUserCart (long userId)
-        {
-            var db = new ShopContext();
-            Order[] orders = await db.Orders.Where (x => x.UserId == userId).ToArrayAsync();
-            if ( orders.Length == 0 )
-            {
-                await CreateOrder (userId);
-                orders = await db.Orders.Where (x => x.UserId == userId).ToArrayAsync();
-            }
-            Order order = orders.Where (x => x.OrderStatus == (byte) OrderStatus.Cart).First();
-            return await db.OrderItems.Where (x => x.OrderId == order.OrderId).ToArrayAsync();
-        }
         public static async Task<AdminStatus> GetAdminStatus (long userId)
         {
             var db = new ShopContext();
             Admin? user = await db.Admins.FindAsync (userId);
             return user is not null ? user.Status : 0;
-        }
-        public static async Task AddToCart (long userId, int itemId, byte count)
-        {
-            var db = new ShopContext();
-            OrderItem[] Cart = await GetUserCart (userId);
-            if (Cart == null)
-                await CreateOrder (userId);
-            Order[] orders = await db.Orders.Where (x => x.UserId == userId).ToArrayAsync();
-            Order order = orders.Where (x => x.OrderStatus == (byte) OrderStatus.Cart).ToArray()[0];
-            var ItemToAdd = new OrderItem { OrderId = order.OrderId, Count = count, ItemId = itemId };
-            await db.OrderItems.AddAsync (ItemToAdd);
-            await db.SaveChangesAsync();
         }
         public static async Task<bool> IsAdmin (long userId)
         {
@@ -226,6 +192,7 @@ namespace TelegramShop.DataBase
             db.Roles.RemoveRange (db.Roles.ToArray ());
             db.RolePermissions.RemoveRange (db.RolePermissions.ToArray ());
             db.Stores.RemoveRange (db.Stores.ToArray ());
+            db.StoreItems.RemoveRange (db.StoreItems.ToArray ());
             db.SaveChanges ();
         }
     } // Other
@@ -312,6 +279,11 @@ namespace TelegramShop.DataBase
 
     internal partial class Db
     {
+        public static async Task<StoreItem?> GetStoreItem (int id)
+        {
+            var db = new ShopContext ();
+            return await db.StoreItems.FindAsync (id);
+        }
         public static async Task CreateStoreItem (StoreItem si)
         {
             var db = new ShopContext ();
@@ -338,6 +310,18 @@ namespace TelegramShop.DataBase
             if ( (await db.StoreItems.Where (x => x.ItemId == itemId && (x.StoreId == Store.Default.StoreId)).ToArrayAsync ()).Length == 0 )
                 await CreateStoreItem (new StoreItem { StoreId = Store.Default.StoreId, Price = 0, Count = 0, ItemId = itemId });
             return await db.StoreItems.Where (x => x.ItemId == itemId && x.StoreId == Store.Default.StoreId).FirstAsync ();
+        }
+        public static async Task EditStoreItemPrice (int id, int price)
+        {
+            var db = new ShopContext ();
+            (await db.StoreItems.FindAsync (id)).Price = price;
+            await db.SaveChangesAsync ();
+        }
+        public static async Task EditStoreItemCount (int id, int count)
+        {
+            var db = new ShopContext ();
+            (await db.StoreItems.FindAsync (id)).Count = count;
+            await db.SaveChangesAsync ();
         }
     } // StoreItems
 
@@ -451,6 +435,15 @@ namespace TelegramShop.DataBase
             }
             return Regions.ToArray ();
         }
+        public static async Task<Store[]> GetStoresWithoutItem (int itemId)
+        {
+            var db = new ShopContext ();
+            var stores = new List<Store> ();
+            foreach (Store s in StoreCache.GetValues ())
+                if ( await db.StoreItems.Where (x => x.ItemId == itemId && x.StoreId == s.StoreId).CountAsync () < 1 )
+                    stores.Add (s);
+            return stores.ToArray ();
+        }
         //public static async Task<string[]> GetCities ()
         //{
         //    var db = new ShopContext ();
@@ -549,8 +542,9 @@ namespace TelegramShop.DataBase
                     else if ( hasItems && !hasCategories )
                     {
                         Item[] CategoryItems = await db.Items.Where (x => x.CategoryId == categoryId).ToArrayAsync ();
+                        foreach ( Item i in CategoryItems )
+                            db.StoreItems.RemoveRange (db.StoreItems.Where (x => x.ItemId == i.ItemId));
                         db.Items.RemoveRange (CategoryItems);
-                        await db.SaveChangesAsync ();
                         db.Categories.Remove (category);
                         await db.SaveChangesAsync ();
                     }
@@ -571,11 +565,21 @@ namespace TelegramShop.DataBase
                 Console.WriteLine (e);
             }
         }
+        public static async Task<Category[]> GetCategoriesPage (int count, int page)
+        {
+            var db = new ShopContext ();
+            return await db.Categories.Where (x => x.ParentId == 0).OrderBy (x => x.CategoryName).Skip (count * (page - 1)).Take (count).ToArrayAsync ();
+        }
+        public static async Task<int> GetCategoriesCount (int parentId)
+        {
+            var db = new ShopContext ();
+            return await db.Categories.Where (x => x.ParentId == parentId).CountAsync ();
+        }
     } // Categories
 
     internal partial class Db
     {
-        public static async Task CreateRole (Role role)
+        public static async Task<Role> CreateRole (Role role)
         {
             var db = new ShopContext ();
             var random = new Random ();
@@ -590,6 +594,7 @@ namespace TelegramShop.DataBase
             await db.Roles.AddAsync (newRole);
             await db.SaveChangesAsync ();
             RoleCache.AddPair (newRole.RoleId, newRole);
+            return newRole;
         }
         public static async Task<Role> GetRole (int id)
         {
@@ -599,6 +604,11 @@ namespace TelegramShop.DataBase
                 return r;
             var db = new ShopContext ();
             return await db.Roles.FindAsync (id);
+        }
+        public static async Task<Role[]> GetRoles ()
+        {
+            var db = new ShopContext ();
+            return await db.Roles.ToArrayAsync ();
         }
         
     } // Roles
@@ -645,7 +655,7 @@ namespace TelegramShop.DataBase
         public static async Task CreatePermission (Permission p)
         {
 
-        }
+        } // !
     } // Permissions
 
     internal partial class Db
@@ -665,15 +675,165 @@ namespace TelegramShop.DataBase
             await db.RolePermissions.AddAsync (rp);
             await db.SaveChangesAsync ();
         }
+        public static async Task<bool> RolePermissionExists (int roleId, string query)
+        {
+            var db = new ShopContext ();
+            return await db.RolePermissions.Where (x => x.RoleId == roleId && x.Query == query).AnyAsync ();
+        }
     } // RolePermissions
 
     internal partial class Db
     {
+        public static async Task<Order> CreateOrder (long userId)
+        {
+            var db = new ShopContext ();
+            var random = new Random ();
+            int randomId;
+            Order[] CurrentOrders;
+            do
+            {
+                randomId = random.Next (1, int.MaxValue);
+                CurrentOrders = await db.Orders.Where (x => x.OrderId == randomId).ToArrayAsync ();
+            } while ( CurrentOrders.Length > 0 );
+            var order = new Order { OrderId = randomId, UserId = userId, OrderStatus = (byte) OrderStatus.Cart };
+            await db.Orders.AddAsync (order);
+            await db.SaveChangesAsync ();
+            return order;
+        }
         public static async Task<int> GetItemCountInCart (long userId)
         {
             var db = new ShopContext ();
-            Order order = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).FirstAsync ();
-            return await db.OrderItems.Where (x => x.OrderId == order.OrderId).CountAsync ();
+            Order[] orders = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).ToArrayAsync ();
+            if ( orders.Length == 0 )
+                return 0;
+            else if ( orders.Length > 1 )
+            {
+                await CheckUserCarts (userId);
+                Order order = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).FirstAsync ();
+                return await db.OrderItems.Where (x => x.OrderId == order.OrderId).CountAsync ();
+            }
+            else
+            {
+                Order order = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).FirstAsync ();
+                return await db.OrderItems.Where (x => x.OrderId == order.OrderId).CountAsync ();
+            }
         }
+        public static async Task AddToCart (long userId, int itemId, int count)
+        {
+            var db = new ShopContext ();
+            await CheckUserCarts (userId);
+            Order cart = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).FirstAsync ();
+            var item = new OrderItem { Count = count, ItemId = itemId, OrderId = cart.OrderId, Price = (await GetGlobalPrice (itemId)).Price*count };
+            var random = new Random ();
+            int randomId;
+            OrderItem[] CurrentItems;
+            do
+            {
+                randomId = random.Next (1, int.MaxValue);
+                CurrentItems = await db.OrderItems.Where (x => x.Id == randomId).ToArrayAsync ();
+            } while ( CurrentItems.Length > 0 );
+            item.Id = randomId;
+            await db.OrderItems.AddAsync (item);
+            cart.Summ += (item.Price * item.Count);
+            await db.SaveChangesAsync ();
+        }
+        public static async Task<OrderItem[]> GetUserCart (long userId)
+        {
+            var db = new ShopContext ();
+            Order[] orders = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).ToArrayAsync ();
+            Order order;
+            if ( orders.Length == 0 )
+                order = await CreateOrder (userId);
+            else if ( orders.Length > 1 )
+                await CheckUserCarts (userId);
+            order = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).FirstAsync ();
+            return await db.OrderItems.Where (x => x.OrderId == order.OrderId).ToArrayAsync ();
+        }
+        public static async Task CheckUserCarts (long userId)
+        {
+            var db = new ShopContext ();
+            Order[] carts = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).ToArrayAsync ();
+            if ( carts.Length > 1 )
+            {
+                int bestIndex = 0, bestCount = 0;
+                for ( int i = 0; i < carts.Length; i++ )
+                {
+                    int curCount = (await db.OrderItems.Where (x => x.OrderId == carts[i].OrderId).ToArrayAsync ()).Length;
+                    if ( curCount > bestCount )
+                    {
+                        bestCount = curCount;
+                        bestIndex = i;
+                    }
+                }
+                for ( int i = 0; i < carts.Length; i++ )
+                {
+                    if ( i == bestIndex )
+                        continue;
+                    else
+                    {
+                        db.Orders.Remove (carts[i]);
+                        await db.SaveChangesAsync ();
+                    }
+                }
+            }
+            else if ( carts.Length == 0 )
+                await CreateOrder (userId);
+        }
+        public static async Task SetOrderStatus (int id, OrderStatus status)
+        {
+            var db = new ShopContext ();
+            Order order = await db.Orders.FindAsync (id);
+            if (order is not null)
+            {
+                order.OrderStatus = status;
+                order.OrderDateTime = DateTime.UtcNow;
+                await db.SaveChangesAsync ();
+            }
+        }
+        public static async Task<Order[]> GetOrders ()
+        {
+            var db = new ShopContext ();
+            return await db.Orders.Where (x => (byte)x.OrderStatus > 0).ToArrayAsync ();
+        }
+        //public static async Task<Order> GetCart (long userId )
+        //{
+        //    var db = new ShopContext ();
+        //    Order[] carts = await db.Orders.Where (x => x.UserId == userId && x.OrderStatus == OrderStatus.Cart).ToArrayAsync ();
+        //    if (carts.Length == 0)
+        //    {
+        //    }
+        //}
     } // Orders
+
+    internal partial class Db
+    {
+        public static async Task DeleteOrderItem (int id)
+        {
+            var db = new ShopContext ();
+            OrderItem? item = await db.OrderItems.FindAsync (id);
+            if (item is not null)
+            {
+                Order cart = await db.Orders.FindAsync (item.OrderId);
+                cart.Summ -= (item.Price * item.Count);
+                db.OrderItems.Remove (item);
+                await db.SaveChangesAsync ();
+            }
+        }
+        public static async Task<OrderItem> GetOrderItem (int id)
+        {
+            var db = new ShopContext ();
+            return await db.OrderItems.FindAsync (id);
+        }
+        public static async Task EditOrderItemCount (int id, int count)
+        {
+            var db = new ShopContext ();
+            OrderItem item = await db.OrderItems.FindAsync (id);
+            if (item is not null)
+            {
+                item.Count = count;
+                item.Price = (await GetGlobalPrice (item.ItemId)).Price * count;
+                await db.SaveChangesAsync ();
+            }
+        }
+    }
 }

@@ -33,7 +33,7 @@ namespace TelegramShop.DataBase
         public string Region { get; set; }
         public string Adress { get; set; }
 
-        public static Store Default = new () { StoreId = 1, StoreName = "Default", Region = "Default", Adress = "Global" };
+        public readonly static Store Default = new () { StoreId = 1, StoreName = "Default", Region = "Default", Adress = "Global" };
     }
 
     public class Property
@@ -119,13 +119,12 @@ namespace TelegramShop.DataBase
         public string query { get; set; }
         public string PermissionName { get; set; }
 
-        public static Permission[] AllPermissions = new Permission[]
+        public static readonly Permission[] AllPermissions = new Permission[]
         {
             new Permission {query = "admin", PermissionName = "Панель администратора"},
             new Permission {query = "orders", PermissionName = "Меню заказов"},
             new Permission {query = "edit_catalog", PermissionName = "Меню изменения каталога"},
             new Permission {query = "edit_stores", PermissionName = "Меню магазинов"},
-            new Permission {query = "roles", PermissionName = "Меню ролей"},
             new Permission {query = "create_category", PermissionName = "Создание каегорий"},
             new Permission {query = "edit_category", PermissionName = "Изменение категорий"},
             new Permission {query = "edit_categories", PermissionName = "Изменение подкатегорий"},
@@ -139,12 +138,28 @@ namespace TelegramShop.DataBase
             new Permission {query = "edit_item_desc", PermissionName = "Изменение описаний товаров"},
             new Permission {query = "edit_item_category", PermissionName = "Изменение категорий товаров"},
             new Permission {query = "delete_item", PermissionName = "Удаление товаров"},
+            new Permission {query = "edit_item_price", PermissionName = "Изменение цены товара"},
+            new Permission {query = "create_item_price", PermissionName = "Добавление цен товаров"},
+            new Permission {query = "create_storeitem", PermissionName = "Добавление цен товаров"},
+            new Permission {query = "edit_storeitem_price", PermissionName = "Изменение цен товаров"},
+            new Permission {query = "edit_storeitem_count", PermissionName = "Изменение цен товаров"},
             new Permission {query = "create_store", PermissionName = "Добавоение магазинов"},
             new Permission {query = "edit_store", PermissionName = "Изменение магазинов"},
             new Permission {query = "edit_store_name", PermissionName = "Изменение названий магазинов"},
             new Permission {query = "edit_store_region", PermissionName = "Изменение регионов магазинов"},
             new Permission {query = "delete_store", PermissionName = "Удаление магазинов"},
+            new Permission {query = "roles", PermissionName = "Меню ролей"},
+            new Permission {query = "edit_roles", PermissionName = "Изменение цен товаров"},
+            new Permission {query = "create_role", PermissionName = "Изменение цен товаров"},
+            new Permission {query = "create_rolepermissions_items", PermissionName = "Изменение цен товаров"},
+            new Permission {query = "create_rolepermissions_orders", PermissionName = "Изменение цен товаров"},
+            new Permission {query = "create_rolepermissions_roles", PermissionName = "Изменение цен товаров"},
+            new Permission {query = "create_rolepermissions_stores", PermissionName = "Изменение цен товаров"},
         };
+        public static Permission[] ItemsAndCategories = AllPermissions[..22];
+        public static Permission[] Orders = (AllPermissions[..1].Concat (AllPermissions[0..])).ToArray ();
+        public static Permission[] Roles = (AllPermissions[..1].Concat (AllPermissions[27..]).ToArray ());
+        public static Permission[] Stores = (AllPermissions[..1].Concat (AllPermissions[22..27]).ToArray ());
     }
 
     public class RolePermission

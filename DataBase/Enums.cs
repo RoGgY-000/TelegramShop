@@ -17,6 +17,8 @@ public enum AdminStatus : byte
     CreateItemGlobalPrice,
     CreateItemDesc,
     CreateItemImage,
+    CreateItemLocalPrice,
+    CreateItemLocalCount,
     EditItemName = 21,
     EditItemDesc,
     EditItemCategory,
@@ -27,7 +29,18 @@ public enum AdminStatus : byte
     CreateStoreAdress,
     EditStoreName,
     EditStoreRegion,
-    DeleteStore
+    DeleteStore,
+    EditStoreItemPrice = 41,
+    EditStoreItemCount,
+    CreateRoleName = 51,
+    CreateRoleDescription,
+    CreateRoleLevel,
+    CreateRolePermissions,
+    EditRoleName,
+    EditRoleDescription,
+    EditRoleLevel,
+    EditRolePermissions,
+    DeleteRole
 }
 
 public enum OrderStatus : byte

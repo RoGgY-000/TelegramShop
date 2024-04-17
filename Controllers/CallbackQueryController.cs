@@ -1,5 +1,6 @@
 ﻿namespace TelegramShop.Controllers
 {
+    using System.Text;
     using Telegram.Bot.Types.ReplyMarkups;
     using Telegram.Bot.Types;
     using TelegramShop.Enums;
@@ -18,10 +19,10 @@
             long userId = Router.GetUserId (update);
             Category[] CategoryArray = await Db.GetRootCategories ();
             await Db.SetAdminStatus (userId, AdminStatus.Clear);
-            Db.RemoveUser (userId);
+            await Db.RemoveUser (userId);
             if ( CategoryArray == null || CategoryArray.Length < 1 )
                 ReplyText = "К сожалению, пока наш каталог пуст :(";
-            else if ( CategoryArray is not null && CategoryArray.Length > 0 )
+            else
                 ReplyText = $"Выберите категорию:\n";
             return (ReplyText, await Kb.EditCatalog (CategoryArray));
         }
@@ -133,7 +134,7 @@
             long userId = Router.GetUserId (update);
             Item item = await Db.GetItem (id);
             await Db.SetAdminStatus (userId, AdminStatus.EditItemName);
-            Db.AddToCache (userId, item);
+            await Db.AddToCache (userId, item);
             string ReplyText = "Введите новое название товара:";
             return (ReplyText, await Kb.Back ($"edit_item?id={item.ItemId:d10}"));
         }
@@ -224,16 +225,195 @@
             return (ReplyText, await Kb.Back ($"edit_stores"));
         }
 
-        [Route ("create_storeitem")]
+        [Route ("create_item_price")]
         public static async Task<(string, InlineKeyboardMarkup)> CreateStoreItem (Update update, int id)
         {
-            return (string.Empty, InlineKeyboardMarkup.Empty ());
-        } // !
+            return ("Выберите магазин:", await Kb.CreateItemPrice (id));
+        }
 
         [Route ("edit_item_prices")]
         public static async Task<(string, InlineKeyboardMarkup)> EditPrices (Update update, int id)
         {
-            return (string.Empty, InlineKeyboardMarkup.Empty ());
-        } // !
+            Item item = await Db.GetItem (id);
+            return ($"Цены товара {item.ItemName}:", await Kb.EditPrices (id));
+        }
+
+        [Route ("create_storeitem")]
+        public static async Task<(string, InlineKeyboardMarkup)> CreateStoreItem (Update update, int itemId, int storeId)
+        {
+            long userId = Router.GetUserId (update);
+            var si = new StoreItem { ItemId = itemId, StoreId = storeId };
+            await Db.AddToCache (userId, si);
+            await Db.SetAdminStatus (userId, AdminStatus.CreateItemLocalPrice);
+            return ("Введите цену:", InlineKeyboardMarkup.Empty ());
+        }
+
+        [Route ("edit_item_price")]
+        public static async Task<(string, InlineKeyboardMarkup)> EditItemPrice (Update update, int id)
+        {
+            StoreItem? si = await Db.GetStoreItem (id);
+            if ( si is not null )
+            {
+                Item item = await Db.GetItem (si.ItemId);
+                string ReplyText = $"Название: {item.ItemName}\n" +
+                        $"Описание: {item.Description ?? "Пусто"}\n" +
+                        $"Категория: {await Db.GetStringPath (item)}\n" +
+                        $"Артикул: {item.ItemId:d10}\n" +
+                        $"Цена: {si.Price}\n" +
+                        $"Количество: {si.Count}";
+                return (ReplyText, await Kb.EditPrice (si));
+            }
+            else return ("Ошибка", InlineKeyboardMarkup.Empty ());
+        }
+
+        [Route ("edit_storeitem_price")]
+        public static async Task<(string, InlineKeyboardMarkup)> EditStoreItemPrice (Update update, int id)
+        {
+            long userId = Router.GetUserId (update);
+            var si = await Db.GetStoreItem (id);
+            await Db.SetAdminStatus (userId, AdminStatus.EditStoreItemPrice);
+            await Db.AddToCache (userId, si);
+            return ("Введите новую цену:", InlineKeyboardMarkup.Empty ());
+        }
+
+        [Route ("edit_storeitem_count")]
+        public static async Task<(string, InlineKeyboardMarkup)> EditStoreItemCount (Update update, int id)
+        {
+            long userId = Router.GetUserId (update);
+            var si = await Db.GetStoreItem (id);
+            await Db.SetAdminStatus (userId, AdminStatus.EditStoreItemCount);
+            await Db.AddToCache (userId, si);
+            return ("Введите новое количество:", InlineKeyboardMarkup.Empty ());
+        }
+
+        [Route ("edit_roles")]
+        public static async Task<(string, InlineKeyboardMarkup)> EditRoles (Update update)
+        {
+            await Db.SetAdminStatus (update.CallbackQuery.From.Id, AdminStatus.Clear);
+            return ("Роли:", await Kb.EditRoles ());
+        }
+
+        [Route ("create_role")]
+        public static async Task<(string, InlineKeyboardMarkup)> CreateRole (Update update)
+        {
+            await Db.SetAdminStatus (update.CallbackQuery.From.Id, AdminStatus.CreateRoleName);
+            return ("Введите название роли:", InlineKeyboardMarkup.Empty ());
+        }
+
+        [Route ("create_rolepermissions_items")]
+        public static async Task<(string, InlineKeyboardMarkup)> CreateRolePermission (Update update, int roleId)
+        {
+            foreach ( Permission p in Permission.ItemsAndCategories )
+                if ( !await Db.RolePermissionExists (roleId, p.query) )
+                    await Db.CreateRolePermission (roleId, p.query);
+            return (update.Message.Text ?? string.Empty, await Kb.CreateRolePermissions (roleId));
+        }
+        //[Route ("create_rolepermissions_items")]
+        //public static async Task<(string, InlineKeyboardMarkup)> CreateRolePermissionsItems (Update update, int roleId)
+        //{
+        //    return ("Выберите разрешения:", await Kb.CreateRolePermissionsItems (roleId));
+        //}
+
+        [Route (true, "catalog")]
+        public static async Task<(string, InlineKeyboardMarkup)> Catalog (Update update, int page = 1)
+        {
+            int maxPage = await Db.GetCategoriesCount (0) / 5 + 1;
+            return ($"Каталог:\nСтраница {page} из {maxPage}", await Kb.Catalog (page, maxPage));
+        }
+
+        [Route (true, "category")]
+        public static async Task<(string, InlineKeyboardMarkup)> Category (Update update, int id, int page = 1)
+        {
+            if ( id > 0 )
+            {
+                Category c = await Db.GetCategory (id);
+                return await Db.HasItems (id)
+                    ? (await Db.GetStringPath (c), await Kb.ItemsInCategory (id, page))
+                    : (await Db.GetStringPath (c), await Kb.CategoriesInCategory (id, page));
+            }
+            else 
+                return await Catalog (update, page);
+        }
+
+        [Route (true, "item")]
+        public static async Task<(string, InlineKeyboardMarkup)> Item (Update update, int id, int page = 1)
+        {
+            Item item = await Db.GetItem (id);
+            await Db.RemoveUser (update.CallbackQuery.From.Id);
+            string replytext = $"{await Db.GetStringPath (item)}\n" +
+                $"{item.ItemName}\n" +
+                $"{item.Description}\n" +
+                $"Цена: {(await Db.GetGlobalPrice (id)).Price}\n" +
+                $"<b>Цена может отличаться в зависимости от города/региона.\nТочная цена будет указана при оформлении заказа</b>\n" +
+                $"Артикул: {item.ItemId}";
+            return (replytext, await Kb.Item (item.ItemId, page));
+        }
+
+        [Route (true, "in_cart")]
+        public static async Task<(string, InlineKeyboardMarkup)> InCart (Update update, int id, int page)
+        {
+            long userId = Router.GetUserId (update);
+            Item item = await Db.GetItem (id);
+            Db.SelectCountCache.AddPair (userId, item);
+            return ("Введите количество:", await BtnGenerator.GetOneButtonMarkup ("Назад", $"item?id={item.ItemId}&page={page:d10}"));
+        }
+
+        [Route (true, "cart")]
+        public static async Task<(string, InlineKeyboardMarkup)> Cart (Update update)
+        {
+            long userId = Router.GetUserId (update);
+            await Db.RemoveUser (userId);
+            OrderItem[] items = await Db.GetUserCart (userId);
+            StringBuilder replyText = new ("Ваша корзина:\n");
+            int summ = 0;
+            for ( int i = 0; i <items.Length; i++ )
+            {
+                Item item = await Db.GetItem (items[i].ItemId);
+                replyText.Append ($"<b>{i+1}</b> {item.ItemName}\n" +
+                    $"    Цена за шт: {items[i].Price / items[i].Count}, {items[i].Count} шт.\n" +
+                    $"    Итого - {items[i].Price}\n");
+                summ += items[i].Price;
+            }
+            replyText.Append ($"Сумма заказа: {summ}");
+            return (replyText.ToString (), await Kb.Cart (items));
+        }
+
+        [Route (true, "delete_orderitem")]
+        public static async Task <(string, InlineKeyboardMarkup)> DeleteOrderItem (Update update, int id)
+        {
+            await Db.DeleteOrderItem (id);
+            return await Cart (update);
+        }
+
+        [Route (true, "edit_orderitem_count")]
+        public static async Task <(string, InlineKeyboardMarkup)> EditOrderItemCount (Update update, int id)
+        {
+            long userId = Router.GetUserId (update);
+            OrderItem item = await Db.GetOrderItem (id);
+            Db.SelectCountCache.AddPair (userId, item);
+            return ("Введите новое количество:", await BtnGenerator.GetOneButtonMarkup ("Назад", "cart"));
+        }
+
+        [Route (true, "make_order")]
+        public static async Task<(string, InlineKeyboardMarkup)> MakeOrder (Update update, int id)
+        {
+            await Db.SetOrderStatus (id, OrderStatus.Created);
+            return ("Заказ оформлен, ожидайте сообщения от менеджера с уточненнием деталей доставки", await Kb.Back ("menu"));
+        }
+
+        [Route ("orders")]
+        public static async Task<(string, InlineKeyboardMarkup)> Orders (Update update)
+        {
+            return ("Текущие заказы:", await Kb.Orders ());
+        }
+
+        //[Route ("admin_order")]
+        //public static async Task<(string, InlineKeyboardMarkup)> AdminOrder (Update update, int id)
+        //{
+        //    Order order = await Db.GetOrder (id);
+        //    StringBuilder replyText = new ($"Заказ №{order.OrderId}\n" +
+        //        $"Заказчик: t.me/{order.UserId}");
+        //    return (string.Empty, InlineKeyboardMarkup.Empty ());
+        //}
     }
 }

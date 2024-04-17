@@ -7,7 +7,10 @@ namespace TelegramShop.Attributes
     class RouteAttribute : Attribute
     {
         public string[] Routes { get; set; }
-        public RouteAttribute (params string[] routes) => Routes = routes;
+        public bool WithoutPermission { get; set; }
+        public RouteAttribute ( bool withoutPermission, params string[] routes) => (Routes, WithoutPermission) = (routes, withoutPermission);
+
+        public RouteAttribute (params string[] routes) => (Routes, WithoutPermission) = (routes, false);
     }
 
     class AccessAttribute : Attribute

@@ -12,7 +12,7 @@ namespace TelegramShop
 
     internal class Program
     {   // Bot
-        private static ITelegramBotClient bot = new TelegramBotClient (AESEncoding.GetToken ());
+        public static ITelegramBotClient bot = new TelegramBotClient (AESEncoding.GetToken ());
 
         private static async Task HandleUpdateAsync (ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
@@ -34,13 +34,14 @@ namespace TelegramShop
                     (ReplyText, ReplyMarkup) = await Router.GetResponseAsync (update);
                     await botClient.SendTextMessageAsync (update.Message.Chat.Id,
                         ReplyText,
-                        replyMarkup: ReplyMarkup);
+                        replyMarkup: ReplyMarkup,
+                        parseMode: ParseMode.Html);
                 }
 
                 else if ( update.Type is UpdateType.CallbackQuery
                     && update.CallbackQuery is not null
                     && update.CallbackQuery.Message is not null
-                    && update.CallbackQuery.Data is not null
+                    && !string.IsNullOrWhiteSpace (update.CallbackQuery.Data)
                     && update.CallbackQuery.From is not null )
                 {
                     CallbackQuery query = update.CallbackQuery;
@@ -48,19 +49,38 @@ namespace TelegramShop
                                                             query.From.LastName,
                                                             query.From.Username)));
                     Console.WriteLine (query.Data);
-                    if ( await Db.HasPermission (userId, Query) )
-                        (ReplyText, ReplyMarkup) = await Router.GetResponseAsync (update);
-                    else
-                        ReplyText = "Недостаточно прав!";
+                    (ReplyText, ReplyMarkup) = await Router.GetResponseAsync (update);
                     await botClient.EditMessageTextAsync (chatId: query.From.Id,
                         messageId: query.Message.MessageId,
                         text: ReplyText,
-                        replyMarkup: ReplyMarkup);
+                        replyMarkup: ReplyMarkup,
+                        parseMode: ParseMode.Html);
                 }
                 double end = (DateTime.Now - start).TotalMilliseconds;
                 Console.WriteLine ($"Responsed in {(int) end}ms");
             }
             catch (Exception e){ Console.WriteLine (e); }
+        }
+        private static async Task HandleErrorAsync (ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
+        {
+            Console.WriteLine (JsonConvert.SerializeObject (exception));
+        }
+        private static void Main ()
+        {
+            try
+            {
+                AESEncoding.Init ();
+                Db.Init ();
+                Router.Init ();
+                bot.StartReceiving (
+                    HandleUpdateAsync,
+                    HandleErrorAsync
+                );
+                Console.WriteLine ("Ready");
+                Console.ReadLine ();
+            }
+            catch ( Exception e )
+            { Console.WriteLine (e); }
         }
 
         //private static async Task HandleUpdateAsyncOld (ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
@@ -613,27 +633,5 @@ namespace TelegramShop
         //    }
         //}
         //// Error Handler
-        private static async Task HandleErrorAsync (ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
-        {
-            Console.WriteLine (JsonConvert.SerializeObject (exception));
-        }
-        private static void Main ()
-        {
-            try
-            {
-                AESEncoding.Init ();
-                Db.Init ();
-                Router.Init ();
-                bot.TestApiAsync ();    
-                bot.StartReceiving (
-                    HandleUpdateAsync,
-                    HandleErrorAsync
-                );
-                Console.WriteLine ("Ready");
-                Console.ReadLine ();
-            }
-            catch ( Exception e ) 
-            { Console.WriteLine (e); }
-        }
     }
 }

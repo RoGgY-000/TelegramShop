@@ -14,6 +14,7 @@ namespace TelegramShop.Routing
     internal class Router
     {
         private static readonly Dictionary<string, MethodInfo> Methods = new ();
+        private static readonly Dictionary<string, MethodInfo> FreeAccess = new ();
 
         private const string badChars = "'\"{}[]\\|+<>";
 
@@ -27,12 +28,17 @@ namespace TelegramShop.Routing
                     foreach ( object obj in method.GetCustomAttributes (attributeType: typeof (RouteAttribute), inherit: false) )
                     {
                         var attr = (RouteAttribute) obj;
-                        foreach (string route in attr.Routes)
+                        foreach ( string route in attr.Routes )
+                        {
                             Methods.Add (route, method);
+                            if ( attr.WithoutPermission )
+                                FreeAccess.Add (route, method);
+                        }
                     }
                 }
             }
         }
+
         public static async Task<(string, InlineKeyboardMarkup)> GetResponseAsync (Update update)
         {
             try
@@ -41,19 +47,14 @@ namespace TelegramShop.Routing
                 switch ( update.Type )
                 {
                     case UpdateType.Message:
-                        if ( update.Message is not null
-                            && update.Message.Text is not null
-                            && update.Message.From is not null )
-                        {
-                            string text = RemoveBadChars (update.Message.Text);
-                            if ( Methods.ContainsKey (text)
-                                && Methods.TryGetValue (text, out MethodInfo? Method)
-                                && Method is not null )
-                                result = await (Task<(string, InlineKeyboardMarkup)>) Method.Invoke (obj: Method, parameters: new object[] { update });
-                            else if ( Methods.TryGetValue ("default", out MethodInfo? Default)
-                                && Default is not null )
-                                result = await (Task<(string, InlineKeyboardMarkup)>) Default.Invoke (obj: Default, parameters: new object[] { update });
-                        }
+                        string text = RemoveBadChars (update.Message.Text);
+                        if ( Methods.ContainsKey (text)
+                            && Methods.TryGetValue (text, out MethodInfo? method)
+                            && method is not null )
+                            result = await (Task<(string, InlineKeyboardMarkup)>) method.Invoke (obj: method, parameters: new object[] { update });
+                        else if ( Methods.TryGetValue ("default", out MethodInfo? Default)
+                            && Default is not null )
+                            result = await (Task<(string, InlineKeyboardMarkup)>) Default.Invoke (obj: Default, parameters: new object[] { update });
                         break;
                     case UpdateType.CallbackQuery:
                         if ( update.CallbackQuery is not null
@@ -61,14 +62,27 @@ namespace TelegramShop.Routing
                         {
                             string data = update.CallbackQuery.Data;
                             string parameters = string.Empty;
-                            if ( data.Contains ('?') )
-                            {
-                                parameters = data[data.IndexOf ('?')..];
-                            }
+                            for ( int i = 0; i < data.Length; i++ )
+                                if ( data[i] == '?' )
+                                {
+                                    parameters = data[(i + 1)..];
+                                    data = data[..i];
+                                }
                             string query = data.Contains ('?') ? data[..data.IndexOf ('?')] : data;
-                            if ( Methods.ContainsKey (query)
-                            && Methods.TryGetValue (query, out MethodInfo? Method)
-                            && Method is not null )
+                            MethodInfo Method;
+                            if ( FreeAccess.ContainsKey (query)
+                                && FreeAccess.TryGetValue (query, out MethodInfo? method2))
+                                Method = method2;
+                            else
+                            {
+                                if ( await Db.HasPermission (GetUserId (update), query) )
+                                {
+                                    Methods.TryGetValue (query, out MethodInfo? method1);
+                                    Method = method1;
+                                }
+                                else return ("Недостаточно прав!", InlineKeyboardMarkup.Empty ());
+                            }
+                            if ( Method is not null )
                             {
                                 ParameterInfo[] Parameters = Method.GetParameters ();
                                 object[] ParametersValues = new object[Parameters.Length];
@@ -98,11 +112,39 @@ namespace TelegramShop.Routing
                 return result is ValueTuple<string, InlineKeyboardMarkup> tuple
                     ? tuple
                     : throw new ArgumentException ();
+
             }
             catch (Exception e)
             { Console.WriteLine (e);
                 return ("Ошибка", InlineKeyboardMarkup.Empty ()); }
         }
+
+        //private static (string, ParameterInfo[]) GetQueryWithParameters (string query, ParameterInfo[] args)
+        //{
+        //    bool hasParameters = false;
+        //    string parameters;
+        //    for ( int i = 0; i < query.Length; i++ )
+        //        if ( query[i] == '?' )
+        //        {
+        //            parameters = query[(i + 1)..];
+        //            query = query[..i];
+        //            hasParameters = true;
+        //        }
+        //    if ( !hasParameters )
+        //        return (query, Array.Empty<ParameterInfo>());
+        //    else
+        //    {
+        //        int x = 0;
+        //        for (int i = 0; i<query.Length; i++)
+        //        {
+        //            if ( "?&".Contains (query[i]) )
+        //                x = i;
+        //            else if ( query[i] == '=' )
+
+        //        }
+        //    }
+
+        //}
         public static string RemoveBadChars (string text)
         {
             if ( text is not null )
